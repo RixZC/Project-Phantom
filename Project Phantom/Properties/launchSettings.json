@@ -1,0 +1,10 @@
+{
+  "profiles": {
+    "Project Phantom (Package)": {
+      "commandName": "MsixPackage"
+    },
+    "Project Phantom (Unpackaged)": {
+      "commandName": "Project"
+    }
+  }
+}
