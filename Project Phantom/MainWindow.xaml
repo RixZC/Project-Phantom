@@ -53,10 +53,29 @@
                                 Margin="0,0,0,8"
                                 CornerRadius="12"
                                 Background="{ThemeResource CardBackgroundFillColorDefaultBrush}">
-                                <TextBlock
-                                    Text="{Binding}"
-                                    FontSize="20"
-                                    FontWeight="SemiBold" />
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+
+                                    <TextBlock
+                                        Text="{Binding}"
+                                        FontSize="20"
+                                        FontWeight="SemiBold"
+                                        VerticalAlignment="Center" />
+
+                                    <Button
+                                        Grid.Column="1"
+                                        Width="36"
+                                        Height="36"
+                                        Padding="0"
+                                        Click="DeleteGroupButton_Click"
+                                        ToolTipService.ToolTip="Delete group"
+                                        AutomationProperties.Name="Delete group">
+                                        <SymbolIcon Symbol="Delete" />
+                                    </Button>
+                                </Grid>
                             </Border>
                         </DataTemplate>
                     </ItemsControl.ItemTemplate>

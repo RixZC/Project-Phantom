@@ -48,5 +48,16 @@ namespace Project_Phantom
                 EmptyGroupsTextBlock.Visibility = Visibility.Collapsed;
             }
         }
+
+        private void DeleteGroupButton_Click(object sender, RoutedEventArgs e)
+        {
+            if (sender is Button button && button.DataContext is string groupName)
+            {
+                _groups.Remove(groupName);
+                EmptyGroupsTextBlock.Visibility = _groups.Count == 0
+                    ? Visibility.Visible
+                    : Visibility.Collapsed;
+            }
+        }
     }
 }
