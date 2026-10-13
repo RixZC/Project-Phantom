@@ -11,9 +11,32 @@
     CloseButtonText="Cancel"
     PrimaryButtonClick="ContentDialog_PrimaryButtonClick">
 
+    <ContentDialog.Resources>
+        <DataTemplate x:Key="ApplicationEntryTemplate">
+            <Grid Margin="0,4">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
+                <TextBlock
+                    Grid.Row="0"
+                    Text="{Binding DisplayName}"
+                    FontWeight="SemiBold"
+                    TextWrapping="NoWrap"
+                    TextTrimming="CharacterEllipsis" />
+                <TextBlock
+                    Grid.Row="1"
+                    Text="{Binding Details}"
+                    Opacity="0.7"
+                    Style="{StaticResource CaptionTextBlockStyle}"
+                    TextWrapping="NoWrap"
+                    TextTrimming="CharacterEllipsis" />
+            </Grid>
+        </DataTemplate>
+    </ContentDialog.Resources>
+
     <Grid Width="496" Height="430">
         <Grid.RowDefinitions>
-            <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
@@ -22,100 +45,56 @@
         <Grid.ColumnDefinitions>
             <ColumnDefinition Width="*" />
             <ColumnDefinition Width="Auto" />
-            <ColumnDefinition Width="Auto" />
         </Grid.ColumnDefinitions>
 
-        <Button
-            x:Name="BrowseProcessesButton"
+        <TextBlock
+            x:Name="ViewTitleTextBlock"
             Grid.Row="0"
-            Grid.Column="1"
-            Content="All Applications"
-            Click="BrowseProcessesButton_Click"
-            Margin="8,0,0,0" />
-
-        <Button
-            x:Name="BackToQuickAddButton"
-            Grid.Row="0"
-            Grid.Column="1"
-            Content="Quick Add"
-            Click="BackToQuickAddButton_Click"
-            Margin="8,0,0,0"
-            Visibility="Collapsed" />
+            Grid.Column="0"
+            Text="All Applications"
+            FontSize="16"
+            FontWeight="SemiBold"
+            VerticalAlignment="Center" />
 
         <Button
             x:Name="RefreshProcessesButton"
             Grid.Row="0"
-            Grid.Column="2"
+            Grid.Column="1"
             Content="Refresh"
             Click="RefreshProcessesButton_Click"
             Margin="8,0,0,0"
-            Visibility="Collapsed" />
+            VerticalAlignment="Center" />
 
         <TextBox
             x:Name="SearchTextBox"
             Grid.Row="1"
             Grid.Column="0"
-            Grid.ColumnSpan="3"
+            Grid.ColumnSpan="2"
             PlaceholderText="Search applications"
             TextChanged="SearchTextBox_TextChanged"
-            Margin="0,12,0,8" />
-
-        <TextBlock
-            x:Name="ViewTitleTextBlock"
-            Grid.Row="2"
-            Grid.Column="0"
-            Grid.ColumnSpan="3"
-            Text="Quick Add"
-            FontSize="16"
-            FontWeight="SemiBold"
-            Margin="0,0,0,8" />
+            Margin="0,8,0,8" />
 
         <ListView
             x:Name="SessionsListView"
-            Grid.Row="3"
+            Grid.Row="2"
             Grid.Column="0"
-            Grid.ColumnSpan="3"
+            Grid.ColumnSpan="2"
             SelectionMode="Single"
             HorizontalContentAlignment="Stretch"
             ScrollViewer.VerticalScrollBarVisibility="Auto"
             ScrollViewer.HorizontalScrollMode="Disabled"
-            SelectionChanged="SessionsListView_SelectionChanged">
-            <ListView.ItemTemplate>
-                <DataTemplate>
-                    <Grid Margin="0,4">
-                        <Grid.RowDefinitions>
-                            <RowDefinition Height="Auto" />
-                            <RowDefinition Height="Auto" />
-                        </Grid.RowDefinitions>
-                        <TextBlock
-                            Grid.Row="0"
-                            Text="{Binding DisplayName}"
-                            FontWeight="SemiBold"
-                            TextWrapping="NoWrap"
-                            TextTrimming="CharacterEllipsis" />
-                        <TextBlock
-                            Grid.Row="1"
-                            Text="{Binding Details}"
-                            Opacity="0.7"
-                            Style="{StaticResource CaptionTextBlockStyle}"
-                            TextWrapping="NoWrap"
-                            TextTrimming="CharacterEllipsis" />
-                    </Grid>
-                </DataTemplate>
-            </ListView.ItemTemplate>
-        </ListView>
+            ItemTemplate="{StaticResource ApplicationEntryTemplate}"
+            SelectionChanged="SessionsListView_SelectionChanged" />
 
         <TextBlock
             x:Name="StatusTextBlock"
-            Grid.Row="4"
+            Grid.Row="3"
             Grid.Column="0"
-            Grid.ColumnSpan="3"
-            Text="No active audio sessions found."
+            Grid.ColumnSpan="2"
+            Text="Some applications may not expose a controllable audio session."
             Opacity="0.7"
-            TextWrapping="NoWrap"
-            TextTrimming="CharacterEllipsis"
+            TextWrapping="Wrap"
             Margin="0,8,0,0"
-            Visibility="Collapsed" />
-
+            Visibility="Visible" />
     </Grid>
 </ContentDialog>

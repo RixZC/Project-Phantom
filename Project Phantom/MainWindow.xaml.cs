@@ -8,6 +8,7 @@ using Microsoft.UI.Xaml.Navigation;
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.ComponentModel;
 using System.IO;
 using System.Linq;
 using System.Runtime.InteropServices.WindowsRuntime;
@@ -29,16 +30,19 @@ namespace Project_Phantom
     {
         private readonly ObservableCollection<GroupItem> _groups = new();
         private bool _groupSavingAllowed = true;
+        private GroupVolumeController? _volumeController;
+        private Microsoft.UI.Dispatching.DispatcherQueueTimer? _saveDebounceTimer;
 
         public MainWindow()
         {
             InitializeComponent();
+            Closed += MainWindow_Closed;
 
             var loadResult = GroupPersistenceService.Load();
             _groupSavingAllowed = loadResult.CanSave;
             foreach (var savedGroup in loadResult.Groups)
             {
-                var group = new GroupItem(savedGroup.Name);
+                var group = CreateGroup(savedGroup.Name, savedGroup.VolumePercent);
                 foreach (var savedApplication in savedGroup.Applications)
                 {
                     group.Applications.Add(new ApplicationEntry(
@@ -52,6 +56,12 @@ namespace Project_Phantom
             }
 
             GroupsItemsControl.ItemsSource = _groups;
+            _volumeController = new GroupVolumeController(_groups, DispatcherQueue);
+            _volumeController.Start();
+            _saveDebounceTimer = DispatcherQueue.CreateTimer();
+            _saveDebounceTimer.Interval = TimeSpan.FromMilliseconds(500);
+            _saveDebounceTimer.IsRepeating = false;
+            _saveDebounceTimer.Tick += (_, _) => SaveGroups();
             EmptyGroupsTextBlock.Visibility = _groups.Count == 0
                 ? Visibility.Visible
                 : Visibility.Collapsed;
@@ -67,21 +77,10 @@ namespace Project_Phantom
 
             if (await dialog.ShowAsync() == ContentDialogResult.Primary)
             {
-                _groups.Add(new GroupItem(dialog.GroupName));
+                _groups.Add(CreateGroup(dialog.GroupName));
                 EmptyGroupsTextBlock.Visibility = Visibility.Collapsed;
                 SaveGroups();
             }
-        }
-
-        private async void AudioVolumeTestButton_Click(object sender, RoutedEventArgs e)
-        {
-            var dialog = new AudioVolumeTestDialog
-            {
-                XamlRoot = Content.XamlRoot
-            };
-
-            dialog.LoadSessions();
-            await dialog.ShowAsync();
         }
 
         private void DeleteGroupButton_Click(object sender, RoutedEventArgs e)
@@ -89,6 +88,8 @@ namespace Project_Phantom
             if (sender is Button button && button.DataContext is GroupItem group)
             {
                 _groups.Remove(group);
+                group.PropertyChanged -= Group_PropertyChanged;
+                _volumeController?.Reconcile();
                 EmptyGroupsTextBlock.Visibility = _groups.Count == 0
                     ? Visibility.Visible
                     : Visibility.Collapsed;
@@ -103,6 +104,7 @@ namespace Project_Phantom
                 var group = _groups.FirstOrDefault(candidate => candidate.Applications.Contains(application));
                 if (group?.Applications.Remove(application) == true)
                 {
+                    _volumeController?.Reconcile();
                     SaveGroups();
                 }
             }
@@ -118,17 +120,18 @@ namespace Project_Phantom
             var dialog = new AddApplicationDialog
             {
                 XamlRoot = Content.XamlRoot,
-                ExistingApplications = group.Applications.ToArray()
+                ExistingApplications = _groups.SelectMany(item => item.Applications).ToArray()
             };
 
-            dialog.Opened += (sender, args) => dialog.LoadSessions();
+            dialog.Opened += (sender, args) => dialog.LoadProcesses();
 
             if (await dialog.ShowAsync() == ContentDialogResult.Primary)
             {
                 if (dialog.SelectedApplication is ApplicationEntry application &&
-                    !group.Applications.Any(existing => existing.IsSameApplication(application)))
+                    !_groups.SelectMany(item => item.Applications).Any(existing => existing.IsSameApplication(application)))
                 {
                     group.Applications.Add(application);
+                    _volumeController?.Reconcile();
                     SaveGroups();
                 }
             }
@@ -144,6 +147,7 @@ namespace Project_Phantom
             var savedGroups = _groups.Select(group => new SavedGroupData
             {
                 Name = group.Name,
+                VolumePercent = group.VolumePercent,
                 Applications = group.Applications.Select(application => new SavedApplicationData
                 {
                     DisplayName = application.DisplayName,
@@ -156,6 +160,36 @@ namespace Project_Phantom
             ShowPersistenceWarning(saveResult.Warning);
         }
 
+        private GroupItem CreateGroup(string name, int volumePercent = 100)
+        {
+            var group = new GroupItem(name, volumePercent);
+            group.PropertyChanged += Group_PropertyChanged;
+            return group;
+        }
+
+        private void Group_PropertyChanged(object? sender, PropertyChangedEventArgs e)
+        {
+            if (sender is not GroupItem group || e.PropertyName != nameof(GroupItem.VolumePercent))
+            {
+                return;
+            }
+
+            _volumeController?.ApplyGroup(group);
+            if (_groupSavingAllowed && _saveDebounceTimer is not null)
+            {
+                _saveDebounceTimer.Stop();
+                _saveDebounceTimer.Start();
+            }
+        }
+
+        private void MainWindow_Closed(object sender, WindowEventArgs args)
+        {
+            _saveDebounceTimer?.Stop();
+            SaveGroups();
+            _volumeController?.Dispose();
+            _volumeController = null;
+        }
+
         private void ShowPersistenceWarning(string? warning)
         {
             PersistenceStatusTextBlock.Text = warning ?? "";
@@ -165,14 +199,33 @@ namespace Project_Phantom
         }
     }
 
-    public sealed class GroupItem
+    public sealed class GroupItem : INotifyPropertyChanged
     {
         public string Name { get; }
         public ObservableCollection<ApplicationEntry> Applications { get; } = new();
+        private int _volumePercent = 100;
 
-        public GroupItem(string name)
+        public event PropertyChangedEventHandler? PropertyChanged;
+
+        public int VolumePercent
+        {
+            get => _volumePercent;
+            set
+            {
+                var clamped = Math.Clamp(value, 0, 100);
+                if (_volumePercent == clamped) return;
+                _volumePercent = clamped;
+                PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(VolumePercent)));
+                PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(VolumeLabel)));
+            }
+        }
+
+        public string VolumeLabel => $"{VolumePercent}%";
+
+        public GroupItem(string name, int volumePercent = 100)
         {
             Name = name;
+            _volumePercent = Math.Clamp(volumePercent, 0, 100);
         }
     }
 }

@@ -9,7 +9,7 @@ namespace Project_Phantom;
 
 internal static class GroupPersistenceService
 {
-    private const int CurrentSchemaVersion = 1;
+    private const int CurrentSchemaVersion = 2;
     private const string FileName = "groups.json";
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
@@ -34,7 +34,7 @@ internal static class GroupPersistenceService
         {
             var json = File.ReadAllText(path);
             var document = JsonSerializer.Deserialize<SavedGroupsDocument>(json, JsonOptions);
-            if (document is null || document.SchemaVersion != CurrentSchemaVersion || document.Groups is null)
+            if (document is null || document.SchemaVersion is < 1 or > CurrentSchemaVersion || document.Groups is null)
             {
                 return CannotLoad("The saved group file has an unsupported format. The original file was preserved, and changes from this session will not be saved.");
             }
@@ -47,7 +47,11 @@ internal static class GroupPersistenceService
                     return CannotLoad("The saved group file contains invalid data. The original file was preserved, and changes from this session will not be saved.");
                 }
 
-                var savedGroup = new SavedGroupData { Name = group.Name.Trim() };
+                var savedGroup = new SavedGroupData
+                {
+                    Name = group.Name.Trim(),
+                    VolumePercent = Math.Clamp(group.VolumePercent, 0, 100)
+                };
                 foreach (var application in group.Applications)
                 {
                     if (application is null)
@@ -200,6 +204,7 @@ internal sealed class SavedGroupsDocument
 internal sealed class SavedGroupData
 {
     public string Name { get; set; } = "";
+    public int VolumePercent { get; set; } = 100;
     public List<SavedApplicationData> Applications { get; set; } = new();
 }
 

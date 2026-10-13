@@ -36,13 +36,6 @@
                     Margin="0,16,0,8"
                     Click="AddGroupButton_Click" />
 
-                <Button
-                    Content="Temporary Audio Volume Test"
-                    HorizontalAlignment="Left"
-                    Click="AudioVolumeTestButton_Click" />
-
-
-
                 <TextBlock
                     Text="Groups"
                     FontSize="20"
@@ -86,6 +79,22 @@
                                 </Expander.Header>
 
                                 <StackPanel Spacing="8" Margin="16,0,16,16">
+                                    <Grid ColumnSpacing="12">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="48" />
+                                        </Grid.ColumnDefinitions>
+                                        <Slider Grid.Column="0"
+                                                Minimum="0"
+                                                Maximum="100"
+                                                StepFrequency="1"
+                                                Value="{Binding VolumePercent, Mode=TwoWay}"
+                                                AutomationProperties.Name="Group volume" />
+                                        <TextBlock Grid.Column="1"
+                                                   Text="{Binding VolumeLabel}"
+                                                   VerticalAlignment="Center"
+                                                   HorizontalTextAlignment="Right" />
+                                    </Grid>
                                     <TextBlock
                                         Text="Applications"
                                         FontWeight="SemiBold" />

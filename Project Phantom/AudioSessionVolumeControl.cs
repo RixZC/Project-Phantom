@@ -20,28 +20,6 @@ internal sealed class AudioSessionVolumeControl : IDisposable
         _volume = volume;
     }
 
-    public bool TryGetVolume(out float volume)
-    {
-        try
-        {
-            if (_session?.State != AudioSessionState.AudioSessionStateActive || _volume is null)
-            {
-                volume = 0;
-                Dispose();
-                return false;
-            }
-
-            volume = _volume.Volume;
-            return true;
-        }
-        catch (Exception ex) when (ex is COMException or InvalidOperationException)
-        {
-            volume = 0;
-            Dispose();
-            return false;
-        }
-    }
-
     public bool TrySetVolume(float volume)
     {
         try

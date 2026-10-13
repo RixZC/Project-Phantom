@@ -18,7 +18,7 @@ public sealed class ApplicationEntry
         ? string.IsNullOrEmpty(SessionSuffix)
             ? $"{ProcessName} • {DeviceName}"
             : $"{ProcessName} • {DeviceName} • {SessionSuffix}"
-        : $"{ProcessName} • Audio session may be unavailable";
+        : ProcessName;
 
     public string SessionKey => HasAudioSession
         ? $"session:{DeviceId}|{SessionInstanceId}"

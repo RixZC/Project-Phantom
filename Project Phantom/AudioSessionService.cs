@@ -4,6 +4,7 @@ using System;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Diagnostics;
+using System.IO;
 using System.Linq;
 using System.Runtime.InteropServices;
 using System.Text;
@@ -115,7 +116,8 @@ internal static class AudioSessionService
     public static IReadOnlyList<ApplicationEntry> GetRunningProcesses()
     {
         var entries = new List<ApplicationEntry>();
-        var windowTitles = GetWindowTitlesByProcessId();
+        var entryIndexByExecutablePath = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+        var entryHasWindowTitle = new List<bool>();
 
         foreach (var process in Process.GetProcesses())
         {
@@ -125,11 +127,36 @@ internal static class AudioSessionService
                 {
                     var processId = process.Id;
                     var processName = $"{process.ProcessName}.exe";
-                    var title = windowTitles.TryGetValue((uint)processId, out var windowTitle)
-                        ? windowTitle
-                        : "";
-                    var displayName = FirstNonEmpty(title, process.ProcessName);
-                    entries.Add(new ApplicationEntry(displayName, processName, processId, GetExecutablePath(process)));
+                    var windowTitle = GetMainWindowTitle(process);
+                    var displayName = FirstNonEmpty(windowTitle, process.ProcessName);
+                    var executablePath = GetExecutablePath(process);
+                    var entry = new ApplicationEntry(displayName, processName, processId, executablePath);
+                    var normalizedPath = NormalizeExecutablePath(executablePath);
+
+                    if (normalizedPath is null)
+                    {
+                        // Without a readable path, keep separate process entries rather than
+                        // risk combining unrelated applications that share a process name.
+                        entries.Add(entry);
+                        entryHasWindowTitle.Add(!string.IsNullOrWhiteSpace(windowTitle));
+                        continue;
+                    }
+
+                    if (entryIndexByExecutablePath.TryGetValue(normalizedPath, out var existingIndex))
+                    {
+                        // One logical choice per executable. Prefer a process that has a
+                        // window title when another instance of the same executable has none.
+                        if (!entryHasWindowTitle[existingIndex] && !string.IsNullOrWhiteSpace(windowTitle))
+                        {
+                            entries[existingIndex] = entry;
+                            entryHasWindowTitle[existingIndex] = true;
+                        }
+                        continue;
+                    }
+
+                    entryIndexByExecutablePath.Add(normalizedPath, entries.Count);
+                    entries.Add(entry);
+                    entryHasWindowTitle.Add(!string.IsNullOrWhiteSpace(windowTitle));
                 }
                 catch (Exception ex) when (ex is ArgumentException or InvalidOperationException or Win32Exception)
                 {
@@ -142,6 +169,36 @@ internal static class AudioSessionService
             .OrderBy(entry => entry.DisplayName, StringComparer.CurrentCultureIgnoreCase)
             .ThenBy(entry => entry.ProcessName, StringComparer.CurrentCultureIgnoreCase)
             .ToArray();
+    }
+
+    private static string GetMainWindowTitle(Process process)
+    {
+        try
+        {
+            return process.MainWindowTitle?.Trim() ?? "";
+        }
+        catch (Exception ex) when (ex is ArgumentException or InvalidOperationException or Win32Exception or NotSupportedException)
+        {
+            // Some processes have no accessible main window or exit during enumeration.
+            return "";
+        }
+    }
+
+    private static string? NormalizeExecutablePath(string? executablePath)
+    {
+        if (string.IsNullOrWhiteSpace(executablePath))
+        {
+            return null;
+        }
+
+        try
+        {
+            return Path.GetFullPath(executablePath).Replace('/', '\\');
+        }
+        catch (Exception ex) when (ex is ArgumentException or NotSupportedException or PathTooLongException)
+        {
+            return null;
+        }
     }
 
     public static AudioSessionVolumeControl? TryOpenActiveSession(ApplicationEntry entry)
