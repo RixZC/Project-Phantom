@@ -13,7 +13,11 @@
         <MicaBackdrop />
     </Window.SystemBackdrop>
 
-    <Grid>
+    <ScrollViewer
+        VerticalScrollBarVisibility="Auto"
+        VerticalScrollMode="Enabled"
+        HorizontalScrollMode="Disabled"
+        ZoomMode="Disabled">
         <Grid Padding="24">
             <StackPanel Spacing="12">
                 <TextBlock
@@ -74,16 +78,78 @@
                                     <TextBlock
                                         Text="Applications"
                                         FontWeight="SemiBold" />
-                                    <ItemsControl ItemsSource="{Binding Applications}" />
-                                    <TextBlock
-                                        Text="No applications assigned yet."
-                                        Opacity="0.7" />
-                                    <Button
-                                        Content="Delete"
-                                        HorizontalAlignment="Right"
-                                        Click="DeleteGroupButton_Click"
-                                        ToolTipService.ToolTip="Delete group"
-                                        AutomationProperties.Name="Delete group" />
+                                    <ListView ItemsSource="{Binding Applications}"
+                                              SelectionMode="None"
+                                              IsItemClickEnabled="False"
+                                              Background="Transparent"
+                                              BorderThickness="0"
+                                              MaxHeight="180">
+                                        <ListView.ItemContainerStyle>
+                                            <Style TargetType="ListViewItem">
+                                                <Setter Property="Padding" Value="0" />
+                                                <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                                            </Style>
+                                        </ListView.ItemContainerStyle>
+                                        <ListView.ItemTemplate>
+                                            <DataTemplate>
+                                                <Border
+                                                    Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                                                    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                                                    BorderThickness="1"
+                                                    CornerRadius="8"
+                                                    Margin="0,3,20,3">
+                                                    <Grid Padding="12,8">
+                                                        <Grid.ColumnDefinitions>
+                                                            <ColumnDefinition Width="*" />
+                                                            <ColumnDefinition Width="Auto" />
+                                                        </Grid.ColumnDefinitions>
+                                                        <StackPanel Grid.Column="0" Spacing="2" VerticalAlignment="Center">
+                                                            <TextBlock
+                                                                Text="{Binding DisplayName}"
+                                                                FontWeight="SemiBold"
+                                                                TextTrimming="CharacterEllipsis" />
+                                                            <TextBlock
+                                                                Text="{Binding Details}"
+                                                                Opacity="0.7"
+                                                                Style="{StaticResource CaptionTextBlockStyle}"
+                                                                TextTrimming="CharacterEllipsis" />
+                                                        </StackPanel>
+                                                        <Button
+                                                            Grid.Column="1"
+                                                            Content="×"
+                                                            FontSize="18"
+                                                            Width="32"
+                                                            Height="32"
+                                                            Padding="0"
+                                                            Background="Transparent"
+                                                            BorderBrush="Transparent"
+                                                            BorderThickness="0"
+                                                            Click="RemoveApplicationButton_Click"
+                                                            ToolTipService.ToolTip="Remove application from group"
+                                                            AutomationProperties.Name="Remove application from group" />
+                                                    </Grid>
+                                                </Border>
+                                            </DataTemplate>
+                                        </ListView.ItemTemplate>
+                                    </ListView>
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
+                                        <Button
+                                            Grid.Column="0"
+                                            Content="Add Application"
+                                            HorizontalAlignment="Left"
+                                            Click="AddApplicationButton_Click" />
+                                        <Button
+                                            Grid.Column="1"
+                                            Content="Delete Group"
+                                            HorizontalAlignment="Right"
+                                            Click="DeleteGroupButton_Click"
+                                            ToolTipService.ToolTip="Delete group"
+                                            AutomationProperties.Name="Delete group" />
+                                    </Grid>
                                 </StackPanel>
                             </Expander>
                         </DataTemplate>
@@ -91,5 +157,5 @@
                 </ItemsControl>
             </StackPanel>
         </Grid>
-    </Grid>
+    </ScrollViewer>
 </Window>

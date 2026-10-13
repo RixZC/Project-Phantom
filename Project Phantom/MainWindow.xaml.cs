@@ -59,12 +59,46 @@ namespace Project_Phantom
                     : Visibility.Collapsed;
             }
         }
+
+        private void RemoveApplicationButton_Click(object sender, RoutedEventArgs e)
+        {
+            if (sender is Button button && button.DataContext is ApplicationEntry application)
+            {
+                var group = _groups.FirstOrDefault(candidate => candidate.Applications.Contains(application));
+                group?.Applications.Remove(application);
+            }
+        }
+
+        private async void AddApplicationButton_Click(object sender, RoutedEventArgs e)
+        {
+            if (sender is not Button button || button.DataContext is not GroupItem group)
+            {
+                return;
+            }
+
+            var dialog = new AddApplicationDialog
+            {
+                XamlRoot = Content.XamlRoot,
+                ExistingApplications = group.Applications.ToArray()
+            };
+
+            dialog.Opened += (sender, args) => dialog.LoadSessions();
+
+            if (await dialog.ShowAsync() == ContentDialogResult.Primary)
+            {
+                if (dialog.SelectedApplication is ApplicationEntry application &&
+                    !group.Applications.Any(existing => existing.SessionKey == application.SessionKey))
+                {
+                    group.Applications.Add(application);
+                }
+            }
+        }
     }
 
     public sealed class GroupItem
     {
         public string Name { get; }
-        public ObservableCollection<string> Applications { get; } = new();
+        public ObservableCollection<ApplicationEntry> Applications { get; } = new();
 
         public GroupItem(string name)
         {
