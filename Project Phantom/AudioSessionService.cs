@@ -80,7 +80,8 @@ internal static class AudioSessionService
                                 processId <= int.MaxValue ? (int)processId : 0,
                                 deviceName,
                                 deviceId,
-                                sessionInstanceId);
+                                sessionInstanceId,
+                                GetExecutablePath(processId));
 
                             if (seenSessions.Add(entry.SessionKey))
                             {
@@ -128,7 +129,7 @@ internal static class AudioSessionService
                         ? windowTitle
                         : "";
                     var displayName = FirstNonEmpty(title, process.ProcessName);
-                    entries.Add(new ApplicationEntry(displayName, processName, processId));
+                    entries.Add(new ApplicationEntry(displayName, processName, processId, GetExecutablePath(process)));
                 }
                 catch (Exception ex) when (ex is ArgumentException or InvalidOperationException or Win32Exception)
                 {
@@ -141,6 +142,67 @@ internal static class AudioSessionService
             .OrderBy(entry => entry.DisplayName, StringComparer.CurrentCultureIgnoreCase)
             .ThenBy(entry => entry.ProcessName, StringComparer.CurrentCultureIgnoreCase)
             .ToArray();
+    }
+
+    public static AudioSessionVolumeControl? TryOpenActiveSession(ApplicationEntry entry)
+    {
+        using var deviceEnumerator = new MMDeviceEnumerator();
+        var devices = deviceEnumerator.EnumerateAudioEndPoints(DataFlow.Render, DeviceState.Active);
+
+        foreach (var device in devices)
+        {
+            using (device)
+            {
+                if (!string.Equals(device.ID, entry.DeviceId, StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
+                try
+                {
+                    var sessions = device.AudioSessionManager.Sessions;
+                    for (var index = 0; index < sessions.Count; index++)
+                    {
+                        AudioSessionControl? session = null;
+                        try
+                        {
+                            session = sessions[index];
+                            if (session.State != AudioSessionState.AudioSessionStateActive ||
+                                session.IsSystemSoundsSession ||
+                                !string.Equals(session.GetSessionInstanceIdentifier, entry.SessionInstanceId, StringComparison.OrdinalIgnoreCase))
+                            {
+                                continue;
+                            }
+
+                            var processId = session.GetProcessID;
+                            if (entry.ProcessId != 0 && processId != (uint)entry.ProcessId)
+                            {
+                                continue;
+                            }
+
+                            var volume = session.SimpleAudioVolume;
+                            var selectedSession = session;
+                            session = null;
+                            return new AudioSessionVolumeControl(selectedSession, volume);
+                        }
+                        catch (Exception ex) when (ex is COMException or InvalidOperationException)
+                        {
+                            // The session may end while it is being reopened.
+                        }
+                        finally
+                        {
+                            session?.Dispose();
+                        }
+                    }
+                }
+                catch (Exception ex) when (ex is COMException or InvalidOperationException)
+                {
+                    // The endpoint may become unavailable during selection.
+                }
+            }
+        }
+
+        return null;
     }
 
     private static string GetSessionDisplayName(AudioSessionControl session)
@@ -170,6 +232,37 @@ internal static class AudioSessionService
         catch (Exception ex) when (ex is ArgumentException or InvalidOperationException or Win32Exception)
         {
             return $"Unknown process (PID {processId})";
+        }
+    }
+
+    private static string? GetExecutablePath(uint processId)
+    {
+        if (processId == 0 || processId > int.MaxValue)
+        {
+            return null;
+        }
+
+        try
+        {
+            using var process = Process.GetProcessById((int)processId);
+            return GetExecutablePath(process);
+        }
+        catch (Exception ex) when (ex is ArgumentException or InvalidOperationException or Win32Exception)
+        {
+            return null;
+        }
+    }
+
+    private static string? GetExecutablePath(Process process)
+    {
+        try
+        {
+            return process.MainModule?.FileName;
+        }
+        catch (Exception ex) when (ex is ArgumentException or InvalidOperationException or Win32Exception or NotSupportedException)
+        {
+            // Some process paths cannot be read because of permissions or process exit.
+            return null;
         }
     }
 

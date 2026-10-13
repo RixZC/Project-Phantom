@@ -36,6 +36,11 @@
                     Margin="0,16,0,8"
                     Click="AddGroupButton_Click" />
 
+                <Button
+                    Content="Temporary Audio Volume Test"
+                    HorizontalAlignment="Left"
+                    Click="AudioVolumeTestButton_Click" />
+
 
 
                 <TextBlock
@@ -48,6 +53,12 @@
                     x:Name="EmptyGroupsTextBlock"
                     Text="No groups yet."
                     Opacity="0.7" />
+
+                <TextBlock
+                    x:Name="PersistenceStatusTextBlock"
+                    Foreground="{ThemeResource SystemFillColorCautionBrush}"
+                    TextWrapping="Wrap"
+                    Visibility="Collapsed" />
 
                 <ItemsControl
                     x:Name="GroupsItemsControl"

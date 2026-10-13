@@ -143,9 +143,7 @@ public sealed partial class AddApplicationDialog : ContentDialog
 
     private bool IsAlreadyInGroup(ApplicationEntry entry)
     {
-        return ExistingApplications.Any(existing =>
-            (entry.ProcessId != 0 && existing.ProcessId == entry.ProcessId) ||
-            string.Equals(existing.ProcessName, entry.ProcessName, StringComparison.OrdinalIgnoreCase));
+        return ExistingApplications.Any(existing => existing.IsSameApplication(entry));
     }
 
     private void SessionsListView_SelectionChanged(object sender, SelectionChangedEventArgs e)
