@@ -7,25 +7,46 @@ using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Navigation;
 using System;
 using System.Collections.Generic;
+using System.Collections.ObjectModel;
 using System.IO;
 using System.Linq;
 using System.Runtime.InteropServices.WindowsRuntime;
+using System.Threading.Tasks;
 using Windows.Foundation;
 using Windows.Foundation.Collections;
 
-// To learn more about WinUI, the WinUI project structure,
-// and more about our project templates, see: http://aka.ms/winui-project-info.
+// Hello
+// Made with ❤️ by RixZC for Hundred Plus
+// 9/30/2026
+// This is the main window of the application.
+// It is the first window that is shown when the application is launched.
+
+// Project Phantom
 
 namespace Project_Phantom
 {
-    /// <summary>
-    /// An empty window that can be used on its own or navigated to within a Frame.
-    /// </summary>
     public sealed partial class MainWindow : Window
     {
+        private readonly ObservableCollection<string> _groups = new();
+
         public MainWindow()
         {
             InitializeComponent();
+            GroupsItemsControl.ItemsSource = _groups;
+        }
+
+        private async void AddGroupButton_Click(object sender, RoutedEventArgs e)
+        {
+            var dialog = new AddGroupDialog();
+            dialog.ExistingGroupNames = _groups;
+
+            dialog.XamlRoot = Content.XamlRoot;
+
+            if (await dialog.ShowAsync() == ContentDialogResult.Primary)
+            {
+                _groups.Add(dialog.GroupName);
+                EmptyGroupsTextBlock.Visibility = Visibility.Collapsed;
+            }
         }
     }
 }

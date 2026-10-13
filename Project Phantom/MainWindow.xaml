@@ -15,20 +15,52 @@
 
     <Grid>
         <Grid Padding="24">
-            <StackPanel Spacing="8">
+            <StackPanel Spacing="12">
                 <TextBlock
-            Text="Sound Mixer"
-            FontSize="28"
-            FontWeight="SemiBold" />
+                    x:Name="TitleText"
+                    Text="Sound Mixer"
+                    FontSize="28"
+                    FontWeight="SemiBold" />
 
                 <TextBlock
-            Text="Manage your application volume groups"
-            Opacity="0.7" />
+                    Text="Manage your application volume groups"
+                    Opacity="0.7" />
 
                 <Button
                     Content="+ Add Group"
                     HorizontalAlignment="Left"
-                    Margin="0,160,0,0" />
+                    Margin="0,16,0,8"
+                    Click="AddGroupButton_Click" />
+
+
+
+                <TextBlock
+                    Text="Groups"
+                    FontSize="20"
+                    FontWeight="SemiBold"
+                    Margin="0,8,0,0" />
+
+                <TextBlock
+                    x:Name="EmptyGroupsTextBlock"
+                    Text="No groups yet."
+                    Opacity="0.7" />
+
+                <ItemsControl x:Name="GroupsItemsControl">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate>
+                            <Border
+                                Padding="16"
+                                Margin="0,0,0,8"
+                                CornerRadius="12"
+                                Background="{ThemeResource CardBackgroundFillColorDefaultBrush}">
+                                <TextBlock
+                                    Text="{Binding}"
+                                    FontSize="20"
+                                    FontWeight="SemiBold" />
+                            </Border>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
             </StackPanel>
         </Grid>
     </Grid>
