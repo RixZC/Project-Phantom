@@ -27,7 +27,7 @@ namespace Project_Phantom
 {
     public sealed partial class MainWindow : Window
     {
-        private readonly ObservableCollection<string> _groups = new();
+        private readonly ObservableCollection<GroupItem> _groups = new();
 
         public MainWindow()
         {
@@ -38,26 +38,37 @@ namespace Project_Phantom
         private async void AddGroupButton_Click(object sender, RoutedEventArgs e)
         {
             var dialog = new AddGroupDialog();
-            dialog.ExistingGroupNames = _groups;
+            dialog.ExistingGroupNames = _groups.Select(group => group.Name).ToArray();
 
             dialog.XamlRoot = Content.XamlRoot;
 
             if (await dialog.ShowAsync() == ContentDialogResult.Primary)
             {
-                _groups.Add(dialog.GroupName);
+                _groups.Add(new GroupItem(dialog.GroupName));
                 EmptyGroupsTextBlock.Visibility = Visibility.Collapsed;
             }
         }
 
         private void DeleteGroupButton_Click(object sender, RoutedEventArgs e)
         {
-            if (sender is Button button && button.DataContext is string groupName)
+            if (sender is Button button && button.DataContext is GroupItem group)
             {
-                _groups.Remove(groupName);
+                _groups.Remove(group);
                 EmptyGroupsTextBlock.Visibility = _groups.Count == 0
                     ? Visibility.Visible
                     : Visibility.Collapsed;
             }
+        }
+    }
+
+    public sealed class GroupItem
+    {
+        public string Name { get; }
+        public ObservableCollection<string> Applications { get; } = new();
+
+        public GroupItem(string name)
+        {
+            Name = name;
         }
     }
 }

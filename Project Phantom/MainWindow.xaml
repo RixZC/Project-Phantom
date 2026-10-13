@@ -45,38 +45,47 @@
                     Text="No groups yet."
                     Opacity="0.7" />
 
-                <ItemsControl x:Name="GroupsItemsControl">
+                <ItemsControl
+                    x:Name="GroupsItemsControl"
+                    HorizontalAlignment="Stretch"
+                    HorizontalContentAlignment="Stretch">
+                    <ItemsControl.ItemContainerTransitions>
+                        <TransitionCollection>
+                            <RepositionThemeTransition />
+                        </TransitionCollection>
+                    </ItemsControl.ItemContainerTransitions>
                     <ItemsControl.ItemTemplate>
                         <DataTemplate>
-                            <Border
-                                Padding="16"
+                            <Expander
                                 Margin="0,0,0,8"
-                                CornerRadius="12"
-                                Background="{ThemeResource CardBackgroundFillColorDefaultBrush}">
-                                <Grid>
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="*" />
-                                        <ColumnDefinition Width="Auto" />
-                                    </Grid.ColumnDefinitions>
-
+                                IsExpanded="False"
+                                HorizontalAlignment="Stretch"
+                                HorizontalContentAlignment="Stretch">
+                                <Expander.Header>
                                     <TextBlock
-                                        Text="{Binding}"
+                                        Text="{Binding Name}"
                                         FontSize="20"
                                         FontWeight="SemiBold"
+                                        Margin="16"
                                         VerticalAlignment="Center" />
+                                </Expander.Header>
 
+                                <StackPanel Spacing="8" Margin="16,0,16,16">
+                                    <TextBlock
+                                        Text="Applications"
+                                        FontWeight="SemiBold" />
+                                    <ItemsControl ItemsSource="{Binding Applications}" />
+                                    <TextBlock
+                                        Text="No applications assigned yet."
+                                        Opacity="0.7" />
                                     <Button
-                                        Grid.Column="1"
-                                        Width="36"
-                                        Height="36"
-                                        Padding="0"
+                                        Content="Delete"
+                                        HorizontalAlignment="Right"
                                         Click="DeleteGroupButton_Click"
                                         ToolTipService.ToolTip="Delete group"
-                                        AutomationProperties.Name="Delete group">
-                                        <SymbolIcon Symbol="Delete" />
-                                    </Button>
-                                </Grid>
-                            </Border>
+                                        AutomationProperties.Name="Delete group" />
+                                </StackPanel>
+                            </Expander>
                         </DataTemplate>
                     </ItemsControl.ItemTemplate>
                 </ItemsControl>
