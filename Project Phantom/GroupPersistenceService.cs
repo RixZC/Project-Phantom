@@ -9,7 +9,7 @@ namespace Project_Phantom;
 
 internal static class GroupPersistenceService
 {
-    private const int CurrentSchemaVersion = 2;
+    private const int CurrentSchemaVersion = 3;
     private const string FileName = "groups.json";
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
@@ -50,7 +50,11 @@ internal static class GroupPersistenceService
                 var savedGroup = new SavedGroupData
                 {
                     Name = group.Name.Trim(),
-                    VolumePercent = Math.Clamp(group.VolumePercent, 0, 100)
+                    VolumePercent = Math.Clamp(group.VolumePercent, 0, 100),
+                    TrayBackgroundColor = GroupTrayColors.Normalize(group.TrayBackgroundColor, GroupTrayColors.DefaultBackground),
+                    TrayTextColor = GroupTrayColors.Normalize(group.TrayTextColor, GroupTrayColors.DefaultText),
+                    UseAutomaticTrayTextColor = group.UseAutomaticTrayTextColor,
+                    AccentColor = GroupTrayColors.Normalize(group.AccentColor, GroupTrayColors.DefaultAccent)
                 };
                 foreach (var application in group.Applications)
                 {
@@ -205,6 +209,10 @@ internal sealed class SavedGroupData
 {
     public string Name { get; set; } = "";
     public int VolumePercent { get; set; } = 100;
+    public string TrayBackgroundColor { get; set; } = GroupTrayColors.DefaultBackground;
+    public string TrayTextColor { get; set; } = GroupTrayColors.DefaultText;
+    public bool UseAutomaticTrayTextColor { get; set; } = true;
+    public string AccentColor { get; set; } = GroupTrayColors.DefaultAccent;
     public List<SavedApplicationData> Applications { get; set; } = new();
 }
 
