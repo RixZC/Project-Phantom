@@ -35,6 +35,7 @@ namespace Project_Phantom
         private Microsoft.UI.Dispatching.DispatcherQueueTimer? _saveDebounceTimer;
         private AppWindow? _appWindow;
         private TrayIconService? _trayIconService;
+        private GlobalHotkeyService? _hotkeyService;
         private GroupItem? _selectedGroup;
         private bool _allowClose;
 
@@ -61,6 +62,8 @@ namespace Project_Phantom
                 group.TrayTextColor = savedGroup.TrayTextColor;
                 group.UseAutomaticTrayTextColor = savedGroup.UseAutomaticTrayTextColor;
                 group.AccentColor = savedGroup.AccentColor;
+                group.Shortcut = GroupPersistenceService.ReadShortcut(savedGroup.Shortcut);
+                group.HasShortcutData = savedGroup.Shortcut.ValueKind != System.Text.Json.JsonValueKind.Undefined;
                 foreach (var savedApplication in savedGroup.Applications)
                 {
                     group.Applications.Add(new ApplicationEntry(
@@ -93,6 +96,14 @@ namespace Project_Phantom
                 ? Visibility.Visible
                 : Visibility.Collapsed;
             ShowPersistenceWarning(loadResult.Warning);
+            _hotkeyService = new GlobalHotkeyService(windowHandle, SelectGroup, ShowHotkeyWarning);
+            var shortcutWarnings = new List<string>();
+            foreach (var group in _groups)
+            {
+                if (!_hotkeyService.Restore(group, out var error))
+                    shortcutWarnings.Add($"{group.Name}: {error}");
+            }
+            ShowHotkeyWarning(shortcutWarnings.Count == 0 ? null : string.Join(" ", shortcutWarnings));
         }
 
         private async void AddGroupButton_Click(object sender, RoutedEventArgs e)
@@ -112,6 +123,13 @@ namespace Project_Phantom
                 }
 
                 EmptyGroupsTextBlock.Visibility = Visibility.Collapsed;
+                // Initial defaults for newly created first through fourth groups; never
+                // overwrite an existing group's customized or cleared shortcut.
+                if (_groups.Count <= 4 && _hotkeyService is not null)
+                {
+                    _hotkeyService.TryAssign(group, new GroupShortcut((uint)(0x74 + _groups.Count - 1)), out var error);
+                    ShowHotkeyWarning(error);
+                }
                 SaveGroups();
             }
         }
@@ -120,7 +138,13 @@ namespace Project_Phantom
         {
             if (sender is Button button && button.DataContext is GroupItem group)
             {
+                if (_hotkeyService is not null && !_hotkeyService.TryAssign(group, null, out var error))
+                {
+                    ShowHotkeyWarning(error);
+                    return;
+                }
                 var wasSelected = ReferenceEquals(_selectedGroup, group);
+                _hotkeyService?.ForgetGroup(group);
                 _groups.Remove(group);
                 group.PropertyChanged -= Group_PropertyChanged;
                 if (wasSelected)
@@ -191,6 +215,7 @@ namespace Project_Phantom
                 TrayTextColor = group.TrayTextColor,
                 UseAutomaticTrayTextColor = group.UseAutomaticTrayTextColor,
                 AccentColor = group.AccentColor,
+                Shortcut = GroupPersistenceService.WriteShortcut(group.Shortcut, group.HasShortcutData),
                 Applications = group.Applications.Select(application => new SavedApplicationData
                 {
                     DisplayName = application.DisplayName,
@@ -234,7 +259,8 @@ namespace Project_Phantom
             }
             else if (e.PropertyName != nameof(GroupItem.TrayBackgroundColor) &&
                 e.PropertyName != nameof(GroupItem.TrayTextColor) &&
-                e.PropertyName != nameof(GroupItem.UseAutomaticTrayTextColor))
+                e.PropertyName != nameof(GroupItem.UseAutomaticTrayTextColor) &&
+                e.PropertyName != nameof(GroupItem.Shortcut))
             {
                 return;
             }
@@ -248,6 +274,8 @@ namespace Project_Phantom
 
         private void MainWindow_Closed(object sender, WindowEventArgs args)
         {
+            _hotkeyService?.Dispose();
+            _hotkeyService = null;
             _trayIconService?.Dispose();
             _trayIconService = null;
             _saveDebounceTimer?.Stop();
@@ -273,6 +301,49 @@ namespace Project_Phantom
             {
                 SelectGroup(group);
             }
+        }
+
+        private async void ShortcutButton_Click(object sender, RoutedEventArgs e)
+        {
+            if (sender is not Button button || button.DataContext is not GroupItem group) return;
+            var dialog = new GroupShortcutDialog(group.Shortcut, (shortcut, allowReassign) =>
+            {
+                if (!_groups.Contains(group)) return "This group no longer exists.";
+                if (_hotkeyService is null) return "Global shortcuts are unavailable.";
+                if (!_hotkeyService.TryAssign(group, shortcut, out var error, allowReassign)) return error;
+                ShowHotkeyWarning(null);
+                _saveDebounceTimer?.Stop();
+                SaveGroups(); // Includes both groups after a confirmed transfer.
+                return null;
+            }, () =>
+            {
+                if (_hotkeyService is null) return "Global shortcuts are unavailable.";
+                _hotkeyService.TrySuspendForRecording(out var error);
+                if (error is not null) ShowHotkeyWarning(error);
+                return error;
+            }, () =>
+            {
+                if (_hotkeyService is null) return "Global shortcuts are unavailable.";
+                _hotkeyService.TryResumeAfterRecording(out var error);
+                ShowHotkeyWarning(error);
+                return error;
+            }, shortcut => _hotkeyService?.FindOwner(group, shortcut), group.ShortcutError)
+            {
+                OwnerWindowHandle = WinRT.Interop.WindowNative.GetWindowHandle(this),
+                ReportRawInputWarning = ShowHotkeyWarning,
+                XamlRoot = Content.XamlRoot,
+                Title = $"Shortcut for {group.Name}"
+            };
+            await dialog.ShowAsync();
+        }
+
+        private void ShowHotkeyWarning(string? warning)
+        {
+            HotkeyStatusTextBlock.Text = warning ?? "";
+            HotkeyStatusTextBlock.Visibility = string.IsNullOrWhiteSpace(warning)
+                ? Visibility.Collapsed : Visibility.Visible;
+            if (!string.IsNullOrWhiteSpace(warning))
+                System.Diagnostics.Debug.WriteLine(warning);
         }
 
         private void SelectGroup(GroupItem? group)
@@ -329,6 +400,8 @@ namespace Project_Phantom
         private void ExitFromTray()
         {
             _allowClose = true;
+            _hotkeyService?.Dispose();
+            _hotkeyService = null;
             _trayIconService?.Dispose();
             _trayIconService = null;
             Close();
@@ -353,6 +426,10 @@ namespace Project_Phantom
         private string _trayTextColor = GroupTrayColors.DefaultText;
         private bool _useAutomaticTrayTextColor = true;
         private string _accentColor = GroupTrayColors.DefaultAccent;
+        private GroupShortcut? _shortcut;
+        internal bool HasShortcutData { get; set; } = true;
+        public bool IsShortcutActive { get; private set; }
+        public string? ShortcutError { get; private set; }
 
         public event PropertyChangedEventHandler? PropertyChanged;
 
@@ -370,6 +447,33 @@ namespace Project_Phantom
         }
 
         public string VolumeLabel => $"{VolumePercent}%";
+
+        public GroupShortcut? Shortcut
+        {
+            get => _shortcut;
+            internal set
+            {
+                var changed = _shortcut != value || !HasShortcutData;
+                HasShortcutData = true;
+                if (!changed) return;
+                _shortcut = value;
+                PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(Shortcut)));
+                PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(ShortcutLabel)));
+            }
+        }
+
+        public string ShortcutLabel => Shortcut is null ? "Not assigned"
+            : Shortcut.Label + (IsShortcutActive ? "" : " (unavailable)");
+
+        internal void SetShortcutStatus(bool active, string? error)
+        {
+            if (IsShortcutActive == active && ShortcutError == error) return;
+            IsShortcutActive = active;
+            ShortcutError = error;
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(IsShortcutActive)));
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(ShortcutError)));
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(ShortcutLabel)));
+        }
 
         public string AccentColor
         {

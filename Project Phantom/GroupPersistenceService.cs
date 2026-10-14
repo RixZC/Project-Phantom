@@ -4,12 +4,13 @@ using System.IO;
 using System.Linq;
 using System.Security;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 
 namespace Project_Phantom;
 
 internal static class GroupPersistenceService
 {
-    private const int CurrentSchemaVersion = 3;
+    private const int CurrentSchemaVersion = 4;
     private const string FileName = "groups.json";
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
@@ -54,8 +55,12 @@ internal static class GroupPersistenceService
                     TrayBackgroundColor = GroupTrayColors.Normalize(group.TrayBackgroundColor, GroupTrayColors.DefaultBackground),
                     TrayTextColor = GroupTrayColors.Normalize(group.TrayTextColor, GroupTrayColors.DefaultText),
                     UseAutomaticTrayTextColor = group.UseAutomaticTrayTextColor,
-                    AccentColor = GroupTrayColors.Normalize(group.AccentColor, GroupTrayColors.DefaultAccent)
+                    AccentColor = GroupTrayColors.Normalize(group.AccentColor, GroupTrayColors.DefaultAccent),
+                    Shortcut = group.Shortcut
                 };
+                // Validate the shape, but retain keys/flags that cannot currently
+                // register. Runtime registration failure must not erase settings.
+                ReadShortcut(group.Shortcut);
                 foreach (var application in group.Applications)
                 {
                     if (application is null)
@@ -171,6 +176,41 @@ internal static class GroupPersistenceService
 
     private static GroupLoadResult CannotLoad(string warning) =>
         new(new List<SavedGroupData>(), canSave: false, warning);
+
+    public static GroupShortcut? ReadShortcut(JsonElement value)
+    {
+        if (value.ValueKind is JsonValueKind.Undefined or JsonValueKind.Null) return null;
+        var saved = value.Deserialize<SavedShortcutData>(JsonOptions)
+            ?? throw new JsonException("Invalid shortcut data.");
+        return new GroupShortcut(saved.VirtualKey, saved.Modifiers)
+        {
+            PhysicalScanCode = saved.PhysicalScanCode,
+            PhysicalIsExtendedKey = saved.PhysicalIsExtendedKey,
+            PhysicalModifiers = saved.PhysicalModifiers
+        };
+    }
+
+    public static JsonElement WriteShortcut(GroupShortcut? shortcut, bool hasShortcutData) =>
+        !hasShortcutData ? default : JsonSerializer.SerializeToElement(shortcut is null ? null : new SavedShortcutData
+        {
+            VirtualKey = shortcut.VirtualKey,
+            Modifiers = shortcut.Modifiers,
+            PhysicalScanCode = shortcut.PhysicalScanCode,
+            PhysicalIsExtendedKey = shortcut.PhysicalIsExtendedKey,
+            PhysicalModifiers = shortcut.PhysicalModifiers
+        }, JsonOptions);
+}
+
+internal sealed class SavedShortcutData
+{
+    [JsonRequired] public uint VirtualKey { get; set; }
+    [JsonRequired] public uint Modifiers { get; set; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public uint? PhysicalScanCode { get; set; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public bool? PhysicalIsExtendedKey { get; set; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public uint? PhysicalModifiers { get; set; }
 }
 
 internal sealed class GroupLoadResult
@@ -213,6 +253,9 @@ internal sealed class SavedGroupData
     public string TrayTextColor { get; set; } = GroupTrayColors.DefaultText;
     public bool UseAutomaticTrayTextColor { get; set; } = true;
     public string AccentColor { get; set; } = GroupTrayColors.DefaultAccent;
+    // Undefined is an older missing field; JSON null explicitly means unbound.
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+    public JsonElement Shortcut { get; set; }
     public List<SavedApplicationData> Applications { get; set; } = new();
 }
 

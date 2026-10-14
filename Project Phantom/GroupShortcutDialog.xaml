@@ -1,0 +1,43 @@
+<ContentDialog
+    x:Class="Project_Phantom.GroupShortcutDialog"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    Title="Group shortcut"
+    PrimaryButtonText="Save"
+    SecondaryButtonText="Clear"
+    CloseButtonText="Cancel"
+    DefaultButton="None"
+    PrimaryButtonClick="SaveButton_Click"
+    SecondaryButtonClick="ClearButton_Click">
+    <StackPanel Spacing="12">
+        <TextBlock Text="Shortcut" />
+        <Button x:Name="RecorderButton"
+                HorizontalAlignment="Stretch" HorizontalContentAlignment="Center"
+                MinHeight="44" Click="RecorderButton_Click"
+                PreviewKeyDown="RecorderButton_PreviewKeyDown"
+                PreviewKeyUp="RecorderButton_PreviewKeyUp"
+                LostFocus="RecorderButton_LostFocus"
+                AutomationProperties.Name="Shortcut recorder">
+            <TextBlock x:Name="RecorderText" Text="Click to record" TextWrapping="Wrap" />
+        </Button>
+        <TextBlock Text="Click the field, then press modifiers and the shortcut key. Release and press again any modifier held before recording. Esc cancels recording; Save applies the shortcut globally."
+                   TextWrapping="Wrap" Opacity="0.7" />
+        <TextBlock Text="Num Lock and Shift can change the virtual key reported for numpad keys. Shortcuts are saved across restarts."
+                   TextWrapping="Wrap" Opacity="0.7" />
+        <TextBlock x:Name="WarningTextBlock"
+                   Foreground="{ThemeResource SystemFillColorCautionBrush}"
+                   TextWrapping="Wrap" Visibility="Collapsed" />
+        <TextBlock x:Name="TranslationInfoTextBlock" FontSize="12" Opacity="0.8"
+                   TextWrapping="Wrap" Visibility="Collapsed" />
+        <StackPanel x:Name="ReassignPanel" Spacing="8" Visibility="Collapsed">
+            <TextBlock x:Name="ReassignTextBlock" TextWrapping="Wrap" />
+            <StackPanel Orientation="Horizontal" Spacing="8">
+                <Button Content="Reassign" Click="ReassignButton_Click" />
+                <Button Content="Keep existing assignments" Click="KeepAssignmentsButton_Click" />
+            </StackPanel>
+        </StackPanel>
+        <TextBlock x:Name="ErrorTextBlock"
+                   Foreground="{ThemeResource SystemFillColorCriticalBrush}"
+                   TextWrapping="Wrap" Visibility="Collapsed" />
+    </StackPanel>
+</ContentDialog>
