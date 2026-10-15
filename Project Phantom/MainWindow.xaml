@@ -13,7 +13,24 @@
         <MicaBackdrop />
     </Window.SystemBackdrop>
 
-    <ScrollViewer
+    <Grid x:Name="WindowLayout">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+        <Grid x:Name="ChromeTitleBar" Height="48" Background="Transparent">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition x:Name="TitleBarLeftInset" Width="0" />
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition x:Name="TitleBarRightInset" Width="0" />
+            </Grid.ColumnDefinitions>
+            <Grid x:Name="TitleBarDragRegion" Grid.Column="1" Background="Transparent">
+                <TextBlock x:Name="ChromeTitleText" Text="Phantom" Margin="24,0,12,0"
+                           FontSize="14" VerticalAlignment="Center"
+                           TextTrimming="CharacterEllipsis" />
+            </Grid>
+        </Grid>
+    <ScrollViewer x:Name="SoundMixerView" Grid.Row="1"
         VerticalScrollBarVisibility="Auto"
         VerticalScrollMode="Enabled"
         HorizontalScrollMode="Disabled"
@@ -23,11 +40,19 @@
                 <local:AccentColorBrushConverter x:Key="AccentColorBrushConverter" />
             </Grid.Resources>
             <StackPanel Spacing="12">
-                <TextBlock
-                    x:Name="TitleText"
-                    Text="Sound Mixer"
-                    FontSize="28"
-                    FontWeight="SemiBold" />
+                <Grid ColumnSpacing="12">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <TextBlock x:Name="TitleText" Text="Sound Mixer" FontSize="28" FontWeight="SemiBold" />
+                    <Button x:Name="OpenSettingsButton" Grid.Column="1" Width="40" Height="40" Padding="0"
+                            VerticalAlignment="Center" Background="Transparent" BorderThickness="0"
+                            Click="OpenSettingsButton_Click" ToolTipService.ToolTip="Settings"
+                            AutomationProperties.Name="Settings">
+                        <FontIcon Glyph="&#xE713;" FontSize="20" />
+                    </Button>
+                </Grid>
 
                 <TextBlock
                     Text="Manage your application volume groups"
@@ -73,13 +98,17 @@
                     </ItemsControl.ItemContainerTransitions>
                     <ItemsControl.ItemTemplate>
                         <DataTemplate>
+                            <Grid Margin="0,0,0,4" HorizontalAlignment="Stretch">
                             <Expander
-                                Margin="0,0,0,8"
+                                MinHeight="72"
+                                Padding="0"
+                                CornerRadius="4"
+                                Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
                                 IsExpanded="False"
                                 HorizontalAlignment="Stretch"
                                 HorizontalContentAlignment="Stretch">
                                 <Expander.Header>
-                                    <Grid ColumnSpacing="8" Padding="16,0">
+                                    <Grid ColumnSpacing="12" Padding="4,4,0,4" MinHeight="72">
                                         <Grid.ColumnDefinitions>
                                             <ColumnDefinition Width="*" />
                                             <ColumnDefinition Width="Auto" />
@@ -87,24 +116,24 @@
                                         <TextBlock
                                             Grid.Column="0"
                                             Text="{Binding Name}"
-                                            FontSize="20"
+                                            FontSize="16"
                                             FontWeight="SemiBold"
+                                            TextTrimming="CharacterEllipsis"
                                             VerticalAlignment="Center" />
                                         <Button
                                             Grid.Column="1"
                                             Content="{Binding SelectionLabel}"
-                                            MinWidth="68"
-                                            Height="32"
-                                            Padding="8,4"
-                                            Background="Transparent"
-                                            BorderThickness="0"
+                                            MinWidth="68" Height="32" Padding="8,4"
+                                            Background="Transparent" BorderThickness="0"
+                                            VerticalAlignment="Center"
                                             Click="SelectGroupButton_Click"
-                                            ToolTipService.ToolTip="Choose which group the tray icon represents"
-                                            AutomationProperties.Name="Select group for tray icon" />
+                                            ToolTipService.ToolTip="Select this group for volume commands"
+                                            AutomationProperties.Name="Select group for volume commands" />
                                     </Grid>
                                 </Expander.Header>
 
-                                <StackPanel Spacing="8" Margin="16,0,16,16">
+                                <Grid Margin="-1,0,-1,-1">
+                                <StackPanel Spacing="8" Margin="33,16,33,33">
                                     <Grid ColumnSpacing="12">
                                         <Grid.ColumnDefinitions>
                                             <ColumnDefinition Width="*" />
@@ -220,11 +249,117 @@
                                             AutomationProperties.Name="Delete group" />
                                     </Grid>
                                 </StackPanel>
+                                <Border Width="3" HorizontalAlignment="Left" VerticalAlignment="Stretch"
+                                        CornerRadius="0,0,0,2" IsHitTestVisible="False"
+                                        Background="{Binding AccentColor, Converter={StaticResource AccentColorBrushConverter}}" />
+                                </Grid>
                             </Expander>
+                            <Border Width="3" Height="72" HorizontalAlignment="Left" VerticalAlignment="Top"
+                                    CornerRadius="2,0,0,0" IsHitTestVisible="False"
+                                    Background="{Binding AccentColor, Converter={StaticResource AccentColorBrushConverter}}" />
+                            </Grid>
                         </DataTemplate>
                     </ItemsControl.ItemTemplate>
                 </ItemsControl>
             </StackPanel>
         </Grid>
     </ScrollViewer>
+    <ScrollViewer x:Name="SettingsView" Grid.Row="1" Visibility="Collapsed"
+                  VerticalScrollBarVisibility="Auto" VerticalScrollMode="Enabled"
+                  HorizontalScrollMode="Disabled" ZoomMode="Disabled">
+        <StackPanel Padding="24" Spacing="12">
+            <StackPanel Orientation="Horizontal" Spacing="12">
+                <Button x:Name="SettingsBackButton" Width="40" Height="40" Padding="0"
+                        Background="Transparent" BorderThickness="0" Click="SettingsBackButton_Click"
+                        ToolTipService.ToolTip="Back to Sound Mixer" AutomationProperties.Name="Back to Sound Mixer">
+                    <FontIcon Glyph="&#xE72B;" FontSize="20" />
+                </Button>
+                <TextBlock Text="Settings" FontSize="28" FontWeight="SemiBold" VerticalAlignment="Center" />
+            </StackPanel>
+            <TextBlock Text="{Binding Text, ElementName=PersistenceStatusTextBlock}"
+                       Visibility="{Binding Visibility, ElementName=PersistenceStatusTextBlock}"
+                       Foreground="{ThemeResource SystemFillColorCautionBrush}" TextWrapping="Wrap" />
+            <TextBlock Text="{Binding Text, ElementName=HotkeyStatusTextBlock}"
+                       Visibility="{Binding Visibility, ElementName=HotkeyStatusTextBlock}"
+                       Foreground="{ThemeResource SystemFillColorCautionBrush}" TextWrapping="Wrap" />
+            <StackPanel Spacing="8" Margin="0,8,0,0">
+                <TextBlock Text="Volume Controls" FontSize="20" FontWeight="SemiBold" />
+                <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                        BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                        BorderThickness="1" CornerRadius="4" Padding="16">
+                    <StackPanel Spacing="12">
+                        <TextBlock Text="Global shortcuts adjust the selected group. Without a selected group, they adjust Windows master volume."
+                                   TextWrapping="Wrap" Opacity="0.7" />
+                        <Button Tag="Up" Click="VolumeShortcutButton_Click" HorizontalAlignment="Left">
+                            <StackPanel Orientation="Horizontal" Spacing="12">
+                                <TextBlock Text="Volume Up" />
+                                <TextBlock x:Name="VolumeUpShortcutText" Text="Not assigned" />
+                            </StackPanel>
+                        </Button>
+                        <Button Tag="Down" Click="VolumeShortcutButton_Click" HorizontalAlignment="Left">
+                            <StackPanel Orientation="Horizontal" Spacing="12">
+                                <TextBlock Text="Volume Down" />
+                                <TextBlock x:Name="VolumeDownShortcutText" Text="Not assigned" />
+                            </StackPanel>
+                        </Button>
+                        <TextBlock Text="Volume adjustment step" />
+                        <Grid ColumnSpacing="12">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="48" />
+                            </Grid.ColumnDefinitions>
+                            <Slider x:Name="VolumeStepSlider" Minimum="1" Maximum="20"
+                                    StepFrequency="1" Value="2"
+                                    AutomationProperties.Name="Volume adjustment step in percentage points" />
+                            <TextBlock x:Name="VolumeStepText" Grid.Column="1" Text="2%"
+                                       VerticalAlignment="Center" HorizontalTextAlignment="Right" />
+                        </Grid>
+                    </StackPanel>
+                </Border>
+            </StackPanel>
+
+            <StackPanel Spacing="8" Margin="0,8,0,0">
+                <TextBlock Text="Default Group" FontSize="20" FontWeight="SemiBold" />
+                <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                        BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                        BorderThickness="1" CornerRadius="4" Padding="16">
+                    <StackPanel Spacing="12">
+                        <ComboBox x:Name="DefaultTargetComboBox" Header="Default volume target"
+                                  HorizontalAlignment="Stretch" />
+                        <ToggleSwitch x:Name="AutomaticReturnToggle" Header="Automatically return to default"
+                                      OnContent="Enabled" OffContent="Disabled" />
+                        <ComboBox x:Name="ReturnDelayComboBox" Header="Return after"
+                                  HorizontalAlignment="Left">
+                            <ComboBoxItem Content="10 seconds" Tag="10" />
+                            <ComboBoxItem Content="30 seconds" Tag="30" />
+                            <ComboBoxItem Content="60 seconds" Tag="60" />
+                            <ComboBoxItem Content="2 minutes" Tag="120" />
+                            <ComboBoxItem Content="5 minutes" Tag="300" />
+                        </ComboBox>
+                    </StackPanel>
+                </Border>
+            </StackPanel>
+
+            <StackPanel Spacing="8" Margin="0,8,0,0">
+                <TextBlock Text="Startup" FontSize="20" FontWeight="SemiBold" />
+                <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                        BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                        BorderThickness="1" CornerRadius="4" Padding="16">
+                    <StackPanel Spacing="12">
+                        <ToggleSwitch x:Name="LaunchWithWindowsToggle"
+                                      Header="Launch Phantom when Windows starts"
+                                      OnContent="Enabled" OffContent="Disabled" IsEnabled="False" />
+                        <ToggleSwitch x:Name="StartMinimizedToggle"
+                                      Header="Start minimized to system tray"
+                                      OnContent="Enabled" OffContent="Disabled" IsEnabled="False" />
+                        <TextBlock x:Name="StartupStatusText" TextWrapping="Wrap"
+                                   Foreground="{ThemeResource SystemFillColorCautionBrush}"
+                                   Visibility="Collapsed" />
+                    </StackPanel>
+                </Border>
+            </StackPanel>
+
+        </StackPanel>
+    </ScrollViewer>
+    </Grid>
 </Window>

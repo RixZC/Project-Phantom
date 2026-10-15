@@ -4,9 +4,11 @@
   xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10"
   xmlns:mp="http://schemas.microsoft.com/appx/2014/phone/manifest"
   xmlns:uap="http://schemas.microsoft.com/appx/manifest/uap/windows10"
+  xmlns:desktop="http://schemas.microsoft.com/appx/manifest/desktop/windows10"
+  xmlns:uap10="http://schemas.microsoft.com/appx/manifest/uap/windows10/10"
   xmlns:rescap="http://schemas.microsoft.com/appx/manifest/foundation/windows10/restrictedcapabilities"
   xmlns:systemai="http://schemas.microsoft.com/appx/manifest/systemai/windows10"
-  IgnorableNamespaces="uap rescap systemai">
+  IgnorableNamespaces="uap desktop uap10 rescap systemai">
 
   <Identity
     Name="5bd23fa4-6b40-455a-8757-d7cc9087e06a"
@@ -43,6 +45,15 @@
         <uap:DefaultTile Wide310x150Logo="Assets\Wide310x150Logo.png" />
         <uap:SplashScreen Image="Assets\SplashScreen.png" />
       </uap:VisualElements>
+      <Extensions>
+        <desktop:Extension Category="windows.startupTask"
+                           Executable="Project Phantom.exe"
+                           EntryPoint="Windows.FullTrustApplication"
+                           uap10:Parameters="--startup">
+          <desktop:StartupTask TaskId="PhantomStartup" Enabled="false"
+                               DisplayName="Project Phantom" />
+        </desktop:Extension>
+      </Extensions>
     </Application>
   </Applications>
 

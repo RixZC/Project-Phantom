@@ -5,6 +5,7 @@ using System.Globalization;
 using System.IO;
 using System.Runtime.InteropServices;
 using Windows.ApplicationModel;
+using Windows.Graphics;
 
 namespace Project_Phantom;
 
@@ -35,6 +36,7 @@ internal sealed class TrayIconService : IDisposable
     private const uint HeaderCommand = 1000;
     private const uint OpenCommand = 1001;
     private const uint ExitCommand = 1002;
+    private const uint SettingsCommand = 1003;
     private const uint MiimBitmap = 0x80;
     private const uint ColorMenu = 4;
     private const int SmallIconWidthMetric = 49;
@@ -54,6 +56,8 @@ internal sealed class TrayIconService : IDisposable
     private readonly DispatcherQueue _dispatcher;
     private readonly Action _openAction;
     private readonly Action _exitAction;
+    private readonly Action<RectInt32>? _showStyledMenu;
+    private readonly Action? _settingsAction;
     private readonly SubclassProcedure _subclassProcedure;
     private readonly IntPtr _menu;
     private readonly uint _taskbarCreatedMessage;
@@ -65,12 +69,15 @@ internal sealed class TrayIconService : IDisposable
     private string _selectedAccentColor = GroupTrayColors.DefaultAccent;
     private bool _disposed;
 
-    public TrayIconService(IntPtr windowHandle, DispatcherQueue dispatcher, Action openAction, Action exitAction)
+    public TrayIconService(IntPtr windowHandle, DispatcherQueue dispatcher, Action openAction, Action exitAction,
+        Action<RectInt32>? showStyledMenu = null, Action? settingsAction = null)
     {
         _windowHandle = windowHandle;
         _dispatcher = dispatcher;
         _openAction = openAction;
         _exitAction = exitAction;
+        _showStyledMenu = showStyledMenu;
+        _settingsAction = settingsAction;
         _subclassProcedure = WindowProcedure;
         _taskbarCreatedMessage = RegisterWindowMessage("TaskbarCreated");
 
@@ -157,6 +164,7 @@ internal sealed class TrayIconService : IDisposable
 
         AppendMenu(_menu, MfSeparator, 0, null);
         AppendMenu(_menu, MfString, OpenCommand, "Open Project Phantom");
+        if (_settingsAction is not null) AppendMenu(_menu, MfString, SettingsCommand, "Settings");
         AppendMenu(_menu, MfString, ExitCommand, "Exit");
     }
 
@@ -692,6 +700,38 @@ internal sealed class TrayIconService : IDisposable
             return;
         }
 
+        var anchor = new RectInt32(cursorPosition.X, cursorPosition.Y, 1, 1);
+        var identifier = new NotifyIconIdentifier
+        {
+            Size = (uint)Marshal.SizeOf<NotifyIconIdentifier>(),
+            WindowHandle = _windowHandle,
+            Id = TrayIconId
+        };
+        if (Shell_NotifyIconGetRect(ref identifier, out var iconBounds) == 0 &&
+            iconBounds.Right > iconBounds.Left && iconBounds.Bottom > iconBounds.Top)
+        {
+            anchor = new RectInt32(iconBounds.Left, iconBounds.Top,
+                iconBounds.Right - iconBounds.Left, iconBounds.Bottom - iconBounds.Top);
+        }
+
+        // A separate lightweight popup can be shown even while MainWindow is hidden.
+        // Retain the existing native menu as a fallback if no UI callback is supplied.
+        if (_showStyledMenu is not null && _dispatcher.TryEnqueue(() =>
+        {
+            if (_disposed) return;
+            try { _showStyledMenu(anchor); }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine("Could not show the styled tray menu: " + ex);
+                ShowNativeContextMenu(cursorPosition);
+            }
+        })) return;
+
+        ShowNativeContextMenu(cursorPosition);
+    }
+
+    private void ShowNativeContextMenu(Point cursorPosition)
+    {
         SetForegroundWindow(_windowHandle);
         var command = TrackPopupMenu(
             _menu,
@@ -706,6 +746,10 @@ internal sealed class TrayIconService : IDisposable
         if (command == OpenCommand)
         {
             _dispatcher.TryEnqueue(() => _openAction());
+        }
+        else if (command == SettingsCommand && _settingsAction is not null)
+        {
+            _dispatcher.TryEnqueue(() => _settingsAction());
         }
         else if (command == ExitCommand)
         {
@@ -759,6 +803,24 @@ internal sealed class TrayIconService : IDisposable
             throw new InvalidOperationException($"Windows drawing failed with status {status}.");
         }
     }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct NotifyIconIdentifier
+    {
+        public uint Size;
+        public IntPtr WindowHandle;
+        public uint Id;
+        public Guid ItemGuid;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct IconBounds
+    {
+        public int Left, Top, Right, Bottom;
+    }
+
+    [DllImport("shell32.dll", ExactSpelling = true)]
+    private static extern int Shell_NotifyIconGetRect(ref NotifyIconIdentifier identifier, out IconBounds bounds);
 
     [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
     private struct NotifyIconData

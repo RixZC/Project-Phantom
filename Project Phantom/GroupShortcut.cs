@@ -104,6 +104,7 @@ public sealed record GroupShortcut(uint VirtualKey, uint Modifiers = 0)
         0x08 => "Backspace", 0x09 => "Tab", 0x0C => "Clear", 0x0D => "Enter",
         0x1B => "Esc", 0x20 => "Space", 0x13 => "Pause", 0x14 => "Caps Lock",
         0x2C => "Print Screen", 0x90 => "Num Lock", 0x91 => "Scroll Lock",
+        0xAF => "Volume Up", 0xAE => "Volume Down", 0xAD => "Volume Mute",
         _ => NativeKeyLabel(key)
     };
 

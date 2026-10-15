@@ -10,7 +10,7 @@ namespace Project_Phantom;
 
 internal static class GroupPersistenceService
 {
-    private const int CurrentSchemaVersion = 4;
+    private const int CurrentSchemaVersion = 6;
     private const string FileName = "groups.json";
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
@@ -40,7 +40,12 @@ internal static class GroupPersistenceService
                 return CannotLoad("The saved group file has an unsupported format. The original file was preserved, and changes from this session will not be saved.");
             }
 
+            var settings = document.Settings ?? new SavedApplicationSettings();
+            ReadShortcut(settings.VolumeUpShortcut);
+            ReadShortcut(settings.VolumeDownShortcut);
             var groups = new List<SavedGroupData>();
+            var groupIds = new HashSet<Guid>();
+            var needsSave = false;
             foreach (var group in document.Groups)
             {
                 if (group is null || string.IsNullOrWhiteSpace(group.Name) || group.Applications is null)
@@ -50,6 +55,7 @@ internal static class GroupPersistenceService
 
                 var savedGroup = new SavedGroupData
                 {
+                    Id = group.Id ?? Guid.NewGuid(),
                     Name = group.Name.Trim(),
                     VolumePercent = Math.Clamp(group.VolumePercent, 0, 100),
                     TrayBackgroundColor = GroupTrayColors.Normalize(group.TrayBackgroundColor, GroupTrayColors.DefaultBackground),
@@ -58,6 +64,9 @@ internal static class GroupPersistenceService
                     AccentColor = GroupTrayColors.Normalize(group.AccentColor, GroupTrayColors.DefaultAccent),
                     Shortcut = group.Shortcut
                 };
+                needsSave |= group.Id is null;
+                if (savedGroup.Id == Guid.Empty || !groupIds.Add(savedGroup.Id.Value))
+                    return CannotLoad("The saved group file contains invalid or duplicate group IDs. The original file was preserved, and changes from this session will not be saved.");
                 // Validate the shape, but retain keys/flags that cannot currently
                 // register. Runtime registration failure must not erase settings.
                 ReadShortcut(group.Shortcut);
@@ -93,7 +102,16 @@ internal static class GroupPersistenceService
                 groups.Add(savedGroup);
             }
 
-            return new GroupLoadResult(groups, canSave: true, warning: null);
+            if (settings.DefaultGroupId is Guid defaultId && !groupIds.Contains(defaultId))
+            {
+                settings.DefaultGroupId = null;
+                needsSave = true;
+            }
+            return new GroupLoadResult(groups, canSave: true, warning: null)
+            {
+                Settings = settings,
+                NeedsSave = needsSave
+            };
         }
         catch (JsonException)
         {
@@ -105,7 +123,7 @@ internal static class GroupPersistenceService
         }
     }
 
-    public static GroupSaveResult Save(IEnumerable<SavedGroupData> groups)
+    public static GroupSaveResult Save(IEnumerable<SavedGroupData> groups, SavedApplicationSettings? settings = null)
     {
         var path = SavePath;
         var directory = Path.GetDirectoryName(path)!;
@@ -117,7 +135,8 @@ internal static class GroupPersistenceService
             var document = new SavedGroupsDocument
             {
                 SchemaVersion = CurrentSchemaVersion,
-                Groups = groups.ToList()
+                Groups = groups.ToList(),
+                Settings = settings ?? new SavedApplicationSettings()
             };
 
             using (var stream = new FileStream(
@@ -215,6 +234,8 @@ internal sealed class SavedShortcutData
 
 internal sealed class GroupLoadResult
 {
+    public SavedApplicationSettings Settings { get; init; } = new();
+    public bool NeedsSave { get; init; }
     public List<SavedGroupData> Groups { get; }
     public bool CanSave { get; }
     public string? Warning { get; }
@@ -243,10 +264,39 @@ internal sealed class SavedGroupsDocument
 {
     public int SchemaVersion { get; set; }
     public List<SavedGroupData>? Groups { get; set; }
+    public SavedApplicationSettings? Settings { get; set; }
+}
+
+internal sealed class SavedApplicationSettings
+{
+    public bool LaunchWithWindows { get; set; }
+    public bool StartMinimizedToTray { get; set; }
+    // Null is Master Volume, independent of group names and list positions.
+    public Guid? DefaultGroupId { get; set; }
+    public bool AutomaticReturnEnabled { get; set; } = true;
+    private int _returnDelaySeconds = 30;
+    public int ReturnDelaySeconds
+    {
+        get => _returnDelaySeconds;
+        set => _returnDelaySeconds = value is 10 or 30 or 60 or 120 or 300 ? value : 30;
+    }
+
+    private int _volumeStepPercent = 2;
+    public int VolumeStepPercent
+    {
+        get => _volumeStepPercent;
+        set => _volumeStepPercent = Math.Clamp(value, 1, 20);
+    }
+
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+    public JsonElement VolumeUpShortcut { get; set; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+    public JsonElement VolumeDownShortcut { get; set; }
 }
 
 internal sealed class SavedGroupData
 {
+    public Guid? Id { get; set; }
     public string Name { get; set; } = "";
     public int VolumePercent { get; set; } = 100;
     public string TrayBackgroundColor { get; set; } = GroupTrayColors.DefaultBackground;

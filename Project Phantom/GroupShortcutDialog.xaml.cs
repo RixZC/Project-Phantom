@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
 using Microsoft.UI.Xaml;
@@ -10,7 +10,7 @@ namespace Project_Phantom;
 public sealed partial class GroupShortcutDialog : ContentDialog
 {
     private readonly Func<GroupShortcut?, bool, string?> _tryAssign;
-    private readonly Func<GroupShortcut, GroupItem?> _findOwner;
+    private readonly Func<GroupShortcut, string?> _findOwner;
     private readonly Func<string?> _suspend;
     private readonly Func<string?> _resume;
     private GroupShortcut? _candidate;
@@ -25,7 +25,7 @@ public sealed partial class GroupShortcutDialog : ContentDialog
     public Action<string>? ReportRawInputWarning { get; set; }
 
     public GroupShortcutDialog(GroupShortcut? shortcut, Func<GroupShortcut?, bool, string?> tryAssign,
-        Func<string?> suspend, Func<string?> resume, Func<GroupShortcut, GroupItem?> findOwner, string? initialError)
+        Func<string?> suspend, Func<string?> resume, Func<GroupShortcut, string?> findOwner, string? initialError)
     {
         InitializeComponent();
         _tryAssign = tryAssign;
@@ -241,7 +241,7 @@ public sealed partial class GroupShortcutDialog : ContentDialog
         if (owner is not null)
         {
             _pendingReassignment = _candidate;
-            ReassignTextBlock.Text = $"{_candidate.Label} belongs to '{owner.Name}'. Reassign it to this group and leave '{owner.Name}' unbound?";
+            ReassignTextBlock.Text = $"{_candidate.Label} belongs to '{owner}'. Reassign it here and leave '{owner}' unbound?";
             ReassignPanel.Visibility = Visibility.Visible;
             RecorderButton.IsEnabled = false;
             IsPrimaryButtonEnabled = false;

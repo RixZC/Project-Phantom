@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Diagnostics;
@@ -7,7 +7,9 @@ using System.Runtime.InteropServices;
 
 namespace Project_Phantom;
 
-/// <summary>Owns group shortcut registrations on the existing window's UI thread.</summary>
+internal enum VolumeCommand { Up, Down }
+
+/// <summary>Owns group and volume-command shortcuts on the existing window's UI thread.</summary>
 internal sealed class GlobalHotkeyService : IDisposable
 {
     private const uint WmHotkey = 0x0312;
@@ -17,11 +19,18 @@ internal sealed class GlobalHotkeyService : IDisposable
     private readonly IntPtr _windowHandle;
     private readonly uint _owningThread;
     private readonly Action<GroupItem> _selectGroup;
+    private readonly Action<int> _adjustVolume;
     private readonly Action<string?> _reportWarning;
     private readonly SubclassProcedure _callback;
     private readonly HashSet<int> _registeredIds = new();
     private readonly Dictionary<int, Registration> _registrations = new();
     private readonly HashSet<GroupItem> _knownGroups = new();
+    private readonly Dictionary<VolumeCommand, GroupShortcut?> _volumeShortcuts = new()
+    {
+        [VolumeCommand.Up] = null, [VolumeCommand.Down] = null
+    };
+    private readonly Dictionary<VolumeCommand, string?> _volumeErrors = new();
+    public event Action? StatusChanged;
     private int _nextId = 1;
     private readonly string? _initializationWarning;
     private GCHandle _callbackRoot;
@@ -29,11 +38,13 @@ internal sealed class GlobalHotkeyService : IDisposable
     private bool _disposed;
     private bool _suspendedForRecording;
 
-    public GlobalHotkeyService(IntPtr windowHandle, Action<GroupItem> selectGroup, Action<string?> reportWarning)
+    public GlobalHotkeyService(IntPtr windowHandle, Action<GroupItem> selectGroup, Action<string?> reportWarning,
+        Action<int> adjustVolume)
     {
         _windowHandle = windowHandle;
         _owningThread = GetCurrentThreadId();
         _selectGroup = selectGroup;
+        _adjustVolume = adjustVolume;
         _reportWarning = reportWarning;
         _callback = WindowProcedure;
         if (windowHandle == IntPtr.Zero || GetWindowThreadProcessId(windowHandle, out _) != _owningThread)
@@ -53,8 +64,36 @@ internal sealed class GlobalHotkeyService : IDisposable
         }
     }
 
-    public GroupItem? FindOwner(GroupItem target, GroupShortcut shortcut) =>
-        _knownGroups.FirstOrDefault(group => !ReferenceEquals(group, target) && group.Shortcut?.IsSameCombination(shortcut) == true);
+    public string? FindConflictName(GroupItem? targetGroup, VolumeCommand? targetCommand, GroupShortcut shortcut)
+    {
+        var owner = FindConflict(targetGroup, targetCommand, shortcut);
+        return owner is null ? null : OwnerName(owner.Value.Group, owner.Value.Command);
+    }
+
+    private (GroupItem? Group, VolumeCommand? Command)? FindConflict(
+        GroupItem? targetGroup, VolumeCommand? targetCommand, GroupShortcut shortcut)
+    {
+        var group = _knownGroups.FirstOrDefault(item => !ReferenceEquals(item, targetGroup) &&
+            item.Shortcut?.IsSameCombination(shortcut) == true);
+        if (group is not null) return (group, null);
+        foreach (var pair in _volumeShortcuts)
+            if (pair.Key != targetCommand && pair.Value?.IsSameCombination(shortcut) == true)
+                return (null, pair.Key);
+        return null;
+    }
+
+    private static string OwnerName(GroupItem? group, VolumeCommand? command) =>
+        group is not null ? group.Name : $"Volume {command}";
+
+    public GroupShortcut? GetVolumeShortcut(VolumeCommand command) => _volumeShortcuts[command];
+    public string? GetVolumeError(VolumeCommand command) => _volumeErrors.GetValueOrDefault(command);
+    public string GetVolumeLabel(VolumeCommand command)
+    {
+        var shortcut = GetVolumeShortcut(command);
+        if (shortcut is null) return "Not assigned";
+        var active = _registrations.Values.Any(item => item.Command == command && _registeredIds.Contains(item.Id));
+        return shortcut.Label + (active ? "" : " (unavailable)");
+    }
 
     public bool Restore(GroupItem group, out string? error)
     {
@@ -62,6 +101,17 @@ internal sealed class GlobalHotkeyService : IDisposable
         if (group.Shortcut is null) { error = null; return true; }
         var success = TryAssign(group, group.Shortcut, out error);
         if (!success) group.SetShortcutStatus(false, error);
+        return success;
+    }
+
+    public bool RestoreVolumeCommand(VolumeCommand command, GroupShortcut? shortcut, out string? error)
+    {
+        VerifyThread();
+        // Retain unavailable saved configurations; never silently erase them.
+        _volumeShortcuts[command] = shortcut;
+        var success = TryAssignVolumeCommand(command, shortcut, out error);
+        if (!success) _volumeErrors[command] = error;
+        StatusChanged?.Invoke();
         return success;
     }
 
@@ -75,12 +125,27 @@ internal sealed class GlobalHotkeyService : IDisposable
     {
         VerifyThread();
         _knownGroups.Add(group);
+        return TryAssignCore(group, null, shortcut, allowReassign, out error);
+    }
+
+    public bool TryAssignVolumeCommand(VolumeCommand command, GroupShortcut? shortcut, out string? error,
+        bool allowReassign = false) => TryAssignCore(null, command, shortcut, allowReassign, out error);
+
+    private bool TryAssignCore(GroupItem? group, VolumeCommand? command, GroupShortcut? shortcut,
+        bool allowReassign, out string? error)
+    {
+        VerifyThread();
         error = null;
-        var previous = _registrations.Values.FirstOrDefault(item => ReferenceEquals(item.Group, group));
+        if (group is null && command is not (VolumeCommand.Up or VolumeCommand.Down))
+        {
+            error = "Unknown volume command.";
+            return false;
+        }
+        var previous = _registrations.Values.FirstOrDefault(item =>
+            ReferenceEquals(item.Group, group) && item.Command == command);
         if (shortcut is null && previous is null)
         {
-            group.Shortcut = null;
-            group.SetShortcutStatus(false, null);
+            Commit(group, command, null);
             return true;
         }
         if (_disposed || !_attached || _suspendedForRecording)
@@ -94,75 +159,110 @@ internal sealed class GlobalHotkeyService : IDisposable
             error = validationError;
             return false;
         }
-
-        var owner = shortcut is null ? null : FindOwner(group, shortcut);
+        var owner = shortcut is null ? null : FindConflict(group, command, shortcut);
         if (owner is not null && !allowReassign)
         {
-            error = $"{shortcut!.Label} is already assigned to '{owner.Name}'.";
+            error = $"{shortcut!.Label} is already assigned to '{OwnerName(owner.Value.Group, owner.Value.Command)}'.";
             return false;
         }
         if (previous is not null && shortcut is not null && previous.Shortcut.IsSameCombination(shortcut) &&
             _registeredIds.Contains(previous.Id) && owner is null)
         {
             _registrations[previous.Id] = previous with { Shortcut = shortcut };
-            group.Shortcut = shortcut;
-            group.SetShortcutStatus(true, null);
+            Commit(group, command, shortcut);
             return true;
         }
-
-        var incoming = owner is null ? null : _registrations.Values.FirstOrDefault(item => ReferenceEquals(item.Group, owner));
-        if (incoming is not null && !_registeredIds.Contains(incoming.Id)) incoming = null;
-        // A confirmed transfer of an active registration only needs its callback
-        // target changed. The native combination remains registered throughout.
-        var newId = incoming?.Id ?? 0;
-        var newlyRegistered = false;
-        if (shortcut is not null && incoming is null)
+        var incoming = owner is null ? null : _registrations.Values.FirstOrDefault(item =>
+            ReferenceEquals(item.Group, owner.Value.Group) && item.Command == owner.Value.Command);
+        var incomingWasActive = incoming is not null && _registeredIds.Contains(incoming.Id);
+        var newId = 0;
+        if (shortcut is not null)
         {
             if (_nextId > 0xBFFF)
             {
                 error = "This session has exhausted shortcut registration IDs. Restart Phantom.";
                 return false;
             }
+            // Transfers must re-register: groups use MOD_NOREPEAT, volume commands do not.
+            if (incomingWasActive)
+            {
+                if (!UnregisterHotKey(_windowHandle, incoming!.Id))
+                {
+                    error = ErrorMessage("Could not release the shortcut for reassignment", Marshal.GetLastWin32Error());
+                    return false;
+                }
+                _registeredIds.Remove(incoming!.Id);
+            }
             newId = _nextId++;
-            if (!RegisterHotKey(_windowHandle, newId, shortcut.Modifiers | ModNoRepeat, shortcut.VirtualKey))
+            var flags = shortcut.Modifiers | (group is not null ? ModNoRepeat : 0);
+            if (!RegisterHotKey(_windowHandle, newId, flags, shortcut.VirtualKey))
             {
                 error = ErrorMessage($"Could not register {shortcut.Label}; another app or Windows may already use it",
                     Marshal.GetLastWin32Error());
+                RestoreIncoming(incoming, incomingWasActive, ref error);
                 return false;
             }
             _registeredIds.Add(newId);
-            newlyRegistered = true;
         }
-        // Registration succeeds before touching either group's configuration.
-        if (previous is not null && previous.Id != newId)
+        if (previous is not null && _registeredIds.Contains(previous.Id) &&
+            !UnregisterHotKey(_windowHandle, previous.Id))
         {
-            if (_registeredIds.Contains(previous.Id) && !UnregisterHotKey(_windowHandle, previous.Id))
+            error = ErrorMessage("Could not release the previous shortcut; assignments were preserved", Marshal.GetLastWin32Error());
+            if (newId != 0)
             {
-                error = ErrorMessage($"Could not release {previous.Shortcut.Label}; both assignments were preserved",
-                    Marshal.GetLastWin32Error());
-                if (newlyRegistered)
-                {
-                    if (UnregisterHotKey(_windowHandle, newId)) _registeredIds.Remove(newId);
-                    else error += " The replacement could not be released; it is inactive in Phantom and will be retried during Exit.";
-                }
-                return false;
+                if (UnregisterHotKey(_windowHandle, newId)) _registeredIds.Remove(newId);
+                else error += " Replacement cleanup failed; it is inactive in Phantom and will be retried on Exit.";
             }
+            RestoreIncoming(incoming, incomingWasActive, ref error);
+            return false;
+        }
+        if (previous is not null)
+        {
             _registeredIds.Remove(previous.Id);
             _registrations.Remove(previous.Id);
         }
-        if (owner is not null)
-        {
-            foreach (var id in _registrations.Where(pair => ReferenceEquals(pair.Value.Group, owner)).Select(pair => pair.Key).ToArray())
-                _registrations.Remove(id);
-            owner.Shortcut = null;
-            owner.SetShortcutStatus(false, null);
-        }
-        if (shortcut is not null) _registrations[newId] = new Registration(newId, group, shortcut);
-        group.Shortcut = shortcut;
-        group.SetShortcutStatus(shortcut is not null, null);
+        if (incoming is not null) _registrations.Remove(incoming.Id);
+        if (shortcut is not null) _registrations[newId] = new Registration(newId, group, shortcut, command);
+        if (owner is not null) Commit(owner.Value.Group, owner.Value.Command, null);
+        Commit(group, command, shortcut);
         return true;
     }
-    private sealed record Registration(int Id, GroupItem Group, GroupShortcut Shortcut);
+
+    private void RestoreIncoming(Registration? incoming, bool wasActive, ref string? error)
+    {
+        if (!wasActive || incoming is null) return;
+        if (RegisterHotKey(_windowHandle, incoming.Id, incoming.NativeModifiers, incoming.Shortcut.VirtualKey))
+            _registeredIds.Add(incoming.Id);
+        else
+        {
+            var warning = ErrorMessage("Could not roll back the original registration; its configuration was preserved",
+                Marshal.GetLastWin32Error());
+            incoming.Group?.SetShortcutStatus(false, warning);
+            if (incoming.Command is VolumeCommand command) _volumeErrors[command] = warning;
+            error += " " + warning;
+        }
+        StatusChanged?.Invoke();
+    }
+
+    private void Commit(GroupItem? group, VolumeCommand? command, GroupShortcut? shortcut)
+    {
+        if (group is not null)
+        {
+            group.Shortcut = shortcut;
+            group.SetShortcutStatus(shortcut is not null, null);
+        }
+        else if (command is VolumeCommand volumeCommand)
+        {
+            _volumeShortcuts[volumeCommand] = shortcut;
+            _volumeErrors[volumeCommand] = null;
+        }
+        StatusChanged?.Invoke();
+    }
+    private sealed record Registration(int Id, GroupItem? Group, GroupShortcut Shortcut, VolumeCommand? Command = null)
+    {
+        public uint NativeModifiers => Shortcut.Modifiers | (Group is not null ? ModNoRepeat : 0);
+        public string OwnerLabel => Group is not null ? $"group '{Group.Name}'" : $"Volume {Command}";
+    }
 
     public bool TrySuspendForRecording(out string? error)
     {
@@ -186,8 +286,9 @@ internal sealed class GlobalHotkeyService : IDisposable
                 return false;
             }
             _registeredIds.Remove(registration.Id);
-            registration.Group.SetShortcutStatus(false, "Paused while recording.");
+            registration.Group?.SetShortcutStatus(false, "Paused while recording.");
         }
+        StatusChanged?.Invoke();
         return true;
     }
 
@@ -200,22 +301,25 @@ internal sealed class GlobalHotkeyService : IDisposable
         foreach (var registration in _registrations.Values)
         {
             if (_registeredIds.Contains(registration.Id)) continue;
-            if (RegisterHotKey(_windowHandle, registration.Id, registration.Shortcut.Modifiers | ModNoRepeat,
+            if (RegisterHotKey(_windowHandle, registration.Id, registration.NativeModifiers,
                 registration.Shortcut.VirtualKey))
             {
                 _registeredIds.Add(registration.Id);
-                registration.Group.SetShortcutStatus(true, null);
+                registration.Group?.SetShortcutStatus(true, null);
+                if (registration.Command is VolumeCommand command) _volumeErrors[command] = null;
             }
             else
             {
                 var warning = ErrorMessage($"Could not restore {registration.Shortcut.Label}; it is currently inactive",
                     Marshal.GetLastWin32Error());
-                registration.Group.SetShortcutStatus(false, warning);
+                registration.Group?.SetShortcutStatus(false, warning);
+                if (registration.Command is VolumeCommand command) _volumeErrors[command] = warning;
                 warnings.Add(warning);
             }
         }
         _suspendedForRecording = false;
         error = warnings.Count == 0 ? null : string.Join(" ", warnings);
+        StatusChanged?.Invoke();
         return error is null;
     }
 
@@ -239,11 +343,16 @@ internal sealed class GlobalHotkeyService : IDisposable
             {
                 // WM_HOTKEY arrives on the HWND's owning UI thread. No dispatch
                 // delay, window activation, or audio-control call is needed.
-                try { _selectGroup(registration.Group); }
+                try
+                {
+                    if (registration.Group is not null) _selectGroup(registration.Group);
+                    else if (registration.Command is VolumeCommand command)
+                        _adjustVolume(command == VolumeCommand.Up ? 1 : -1);
+                }
                 catch (Exception ex)
                 {
-                    Debug.WriteLine($"Global shortcut selection failed: {ex}");
-                    _reportWarning("The global shortcut could not select its group.");
+                    Debug.WriteLine($"Global shortcut command failed: {ex}");
+                    _reportWarning("The global shortcut command could not be completed.");
                 }
                 return IntPtr.Zero;
             }

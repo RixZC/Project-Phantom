@@ -4,6 +4,7 @@ using Microsoft.UI.Xaml.Controls.Primitives;
 using Microsoft.UI.Xaml.Data;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
+using Microsoft.UI.Xaml.Media.Animation;
 using Microsoft.UI.Xaml.Navigation;
 using Microsoft.UI.Windowing;
 using System;
@@ -23,7 +24,7 @@ using Windows.Foundation.Collections;
 // This is the main window of the application.
 // It is the first window that is shown when the application is launched.
 
-// Project Phantom
+// Project Phantom - Disturn
 
 namespace Project_Phantom
 {
@@ -35,9 +36,90 @@ namespace Project_Phantom
         private Microsoft.UI.Dispatching.DispatcherQueueTimer? _saveDebounceTimer;
         private AppWindow? _appWindow;
         private TrayIconService? _trayIconService;
+        private TrayMenuWindow? _trayMenuWindow;
         private GlobalHotkeyService? _hotkeyService;
+        private SavedApplicationSettings _settings = new();
+        private Microsoft.UI.Dispatching.DispatcherQueueTimer? _automaticReturnTimer;
+        private long? _returnDeadline;
+        private bool _updatingDefaultControls;
+        private bool _updatingStartupControls;
+        private bool _startupOperation;
+        private bool _startupReady;
         private GroupItem? _selectedGroup;
         private bool _allowClose;
+        private XamlRoot? _chromeXamlRoot;
+        private Storyboard? _viewTransition;
+#if DEBUG
+        private int _windowDebugLines;
+        private int _chromeDebugDepth;
+#endif
+
+        internal bool StartMinimizedToTray => _settings.StartMinimizedToTray && _trayIconService is not null;
+
+        internal void OpenFromLaunch() => RestoreFromTray();
+
+        internal async Task InitializeStartupAsync()
+        {
+            ApplyStartupStatus(await StartupService.ReadAsync());
+            StartMinimizedToggle.IsOn = _settings.StartMinimizedToTray;
+            LaunchWithWindowsToggle.Toggled += LaunchWithWindowsToggle_Toggled;
+            StartMinimizedToggle.Toggled += StartMinimizedToggle_Toggled;
+            _startupReady = true;
+            // Reflect Task Manager/Settings changes when the window is opened again.
+            Activated += async (_, args) =>
+            {
+                TraceWindowState($"Startup activation: {args.WindowActivationState}");
+                if (!_startupReady || _startupOperation || _allowClose ||
+                    args.WindowActivationState == WindowActivationState.Deactivated) return;
+                _startupOperation = true;
+                try
+                {
+                    ApplyStartupStatus(await StartupService.ReadAsync());
+                    TraceWindowState("Startup activation refresh completed");
+                }
+                catch (Exception ex)
+                {
+                    System.Diagnostics.Debug.WriteLine($"[WindowDebug] Startup activation exception: {ex}");
+                    throw;
+                }
+                finally { _startupOperation = false; }
+            };
+        }
+
+        private void ApplyStartupStatus(StartupService.Status status)
+        {
+            var changed = status.Enabled is bool enabled && _settings.LaunchWithWindows != enabled;
+            if (status.Enabled is bool actual) _settings.LaunchWithWindows = actual;
+            _updatingStartupControls = true;
+            try
+            {
+                LaunchWithWindowsToggle.IsOn = status.Enabled == true;
+                LaunchWithWindowsToggle.IsEnabled = status.CanChange;
+                StartMinimizedToggle.IsEnabled = status.Enabled == true;
+                StartupStatusText.Text = status.Warning ?? "";
+                StartupStatusText.Visibility = status.Warning is null ? Visibility.Collapsed : Visibility.Visible;
+            }
+            finally { _updatingStartupControls = false; }
+            if (changed) SaveGroups();
+        }
+
+        private async void LaunchWithWindowsToggle_Toggled(object sender, RoutedEventArgs e)
+        {
+            if (_updatingStartupControls || _startupOperation || _allowClose) return;
+            _startupOperation = true;
+            var requested = LaunchWithWindowsToggle.IsOn;
+            LaunchWithWindowsToggle.IsEnabled = false;
+            StartMinimizedToggle.IsEnabled = false;
+            try { ApplyStartupStatus(await StartupService.SetEnabledAsync(requested)); }
+            finally { _startupOperation = false; }
+        }
+
+        private void StartMinimizedToggle_Toggled(object sender, RoutedEventArgs e)
+        {
+            if (_updatingStartupControls || _startupOperation || !StartMinimizedToggle.IsEnabled || _allowClose) return;
+            _settings.StartMinimizedToTray = StartMinimizedToggle.IsOn;
+            SaveGroups();
+        }
 
         public MainWindow()
         {
@@ -49,15 +131,30 @@ namespace Project_Phantom
             _appWindow = AppWindow.GetFromWindowId(windowId);
             if (_appWindow is not null)
             {
+                ExtendsContentIntoTitleBar = true;
+                SetTitleBar(TitleBarDragRegion);
+                _appWindow.TitleBar.PreferredHeightOption = TitleBarHeightOption.Tall;
+                _appWindow.Changed += AppWindow_ChromeChanged;
+                WindowLayout.Loaded += WindowLayout_Loaded;
+                WindowLayout.ActualThemeChanged += (_, _) => UpdateTitleBarColors();
+                Activated += (_, args) =>
+                {
+                    TraceWindowState($"Chrome activation: {args.WindowActivationState}");
+                    ChromeTitleText.Opacity = args.WindowActivationState == WindowActivationState.Deactivated ? 0.6 : 1;
+                };
+                UpdateTitleBarMetrics();
+                UpdateTitleBarColors();
                 _appWindow.Closing += AppWindow_Closing;
-                _trayIconService = new TrayIconService(windowHandle, DispatcherQueue, RestoreFromTray, ExitFromTray);
+                _trayIconService = new TrayIconService(windowHandle, DispatcherQueue, RestoreFromTray, ExitFromTray,
+                    ShowTrayMenu, OpenSettingsFromTray);
             }
 
             var loadResult = GroupPersistenceService.Load();
+            _settings = loadResult.Settings;
             _groupSavingAllowed = loadResult.CanSave;
             foreach (var savedGroup in loadResult.Groups)
             {
-                var group = CreateGroup(savedGroup.Name, savedGroup.VolumePercent);
+                var group = CreateGroup(savedGroup.Name, savedGroup.VolumePercent, savedGroup.Id);
                 group.TrayBackgroundColor = savedGroup.TrayBackgroundColor;
                 group.TrayTextColor = savedGroup.TrayTextColor;
                 group.UseAutomaticTrayTextColor = savedGroup.UseAutomaticTrayTextColor;
@@ -77,14 +174,11 @@ namespace Project_Phantom
             }
 
             GroupsItemsControl.ItemsSource = _groups;
-            if (_groups.Count > 0)
-            {
-                SelectGroup(_groups[0]);
-            }
-            else
-            {
-                _trayIconService?.UpdateSelectedGroup(null, 100);
-            }
+            _automaticReturnTimer = DispatcherQueue.CreateTimer();
+            _automaticReturnTimer.IsRepeating = false;
+            _automaticReturnTimer.Tick += AutomaticReturnTimer_Tick;
+            _trayIconService?.UpdateSelectedGroup(null, 100);
+            SelectGroup(GetDefaultTarget());
 
             _volumeController = new GroupVolumeController(_groups, DispatcherQueue);
             _volumeController.Start();
@@ -96,14 +190,91 @@ namespace Project_Phantom
                 ? Visibility.Visible
                 : Visibility.Collapsed;
             ShowPersistenceWarning(loadResult.Warning);
-            _hotkeyService = new GlobalHotkeyService(windowHandle, SelectGroup, ShowHotkeyWarning);
+            _hotkeyService = new GlobalHotkeyService(windowHandle, SelectGroup, ShowHotkeyWarning, AdjustVolume);
+            _hotkeyService.StatusChanged += UpdateVolumeShortcutLabels;
             var shortcutWarnings = new List<string>();
             foreach (var group in _groups)
             {
                 if (!_hotkeyService.Restore(group, out var error))
                     shortcutWarnings.Add($"{group.Name}: {error}");
             }
+            foreach (var command in new[] { VolumeCommand.Up, VolumeCommand.Down })
+            {
+                var saved = command == VolumeCommand.Up ? _settings.VolumeUpShortcut : _settings.VolumeDownShortcut;
+                if (!_hotkeyService.RestoreVolumeCommand(command, GroupPersistenceService.ReadShortcut(saved), out var error))
+                    shortcutWarnings.Add($"Volume {command}: {error}");
+            }
+            UpdateVolumeShortcutLabels();
             ShowHotkeyWarning(shortcutWarnings.Count == 0 ? null : string.Join(" ", shortcutWarnings));
+            // Load before subscribing so initialization cannot save over existing settings.
+            VolumeStepSlider.Value = _settings.VolumeStepPercent;
+            VolumeStepText.Text = $"{_settings.VolumeStepPercent}%";
+            VolumeStepSlider.ValueChanged += VolumeStepSlider_ValueChanged;
+            RefreshDefaultTargets();
+            AutomaticReturnToggle.IsOn = _settings.AutomaticReturnEnabled;
+            ReturnDelayComboBox.SelectedItem = ReturnDelayComboBox.Items.OfType<ComboBoxItem>()
+                .First(item => (string)item.Tag == _settings.ReturnDelaySeconds.ToString());
+            ReturnDelayComboBox.IsEnabled = _settings.AutomaticReturnEnabled;
+            DefaultTargetComboBox.SelectionChanged += DefaultTargetComboBox_SelectionChanged;
+            AutomaticReturnToggle.Toggled += AutomaticReturnToggle_Toggled;
+            ReturnDelayComboBox.SelectionChanged += ReturnDelayComboBox_SelectionChanged;
+            if (loadResult.NeedsSave) SaveGroups();
+        }
+
+        // Both views and their services remain alive throughout navigation.
+        private void OpenSettingsButton_Click(object sender, RoutedEventArgs e)
+            => ShowSettingsView();
+
+        private void ShowSettingsView()
+        {
+            if (SettingsView.Visibility != Visibility.Visible)
+                SwitchView(SoundMixerView, SettingsView, forward: true);
+            SettingsBackButton.Focus(FocusState.Programmatic);
+        }
+
+        private void SettingsBackButton_Click(object sender, RoutedEventArgs e)
+        {
+            SwitchView(SettingsView, SoundMixerView, forward: false);
+            OpenSettingsButton.Focus(FocusState.Programmatic);
+        }
+
+        private void SwitchView(FrameworkElement outgoing, FrameworkElement incoming, bool forward)
+        {
+            _viewTransition?.Stop();
+            _viewTransition = null;
+            outgoing.Visibility = Visibility.Collapsed;
+            incoming.Visibility = Visibility.Visible;
+            if (!new Windows.UI.ViewManagement.UISettings().AnimationsEnabled) return;
+
+            var translation = new TranslateTransform();
+            incoming.RenderTransform = translation;
+            var slide = new DoubleAnimation
+            {
+                From = forward ? 40 : -40,
+                To = 0,
+                Duration = new Duration(TimeSpan.FromMilliseconds(240)),
+                EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut }
+            };
+            var fade = new DoubleAnimation
+            {
+                From = 0, To = 1,
+                Duration = new Duration(TimeSpan.FromMilliseconds(180))
+            };
+            Storyboard.SetTarget(slide, translation);
+            Storyboard.SetTargetProperty(slide, "X");
+            Storyboard.SetTarget(fade, incoming);
+            Storyboard.SetTargetProperty(fade, "Opacity");
+            var transition = new Storyboard();
+            transition.Children.Add(slide);
+            transition.Children.Add(fade);
+            transition.Completed += (_, _) =>
+            {
+                if (!ReferenceEquals(_viewTransition, transition)) return;
+                transition.Stop();
+                _viewTransition = null;
+            };
+            _viewTransition = transition;
+            transition.Begin();
         }
 
         private async void AddGroupButton_Click(object sender, RoutedEventArgs e)
@@ -117,6 +288,7 @@ namespace Project_Phantom
             {
                 var group = CreateGroup(dialog.GroupName);
                 _groups.Add(group);
+                RefreshDefaultTargets();
                 if (_selectedGroup is null)
                 {
                     SelectGroup(group);
@@ -147,10 +319,14 @@ namespace Project_Phantom
                 _hotkeyService?.ForgetGroup(group);
                 _groups.Remove(group);
                 group.PropertyChanged -= Group_PropertyChanged;
+                if (_settings.DefaultGroupId == group.Id)
+                    _settings.DefaultGroupId = null;
+                RefreshDefaultTargets();
                 if (wasSelected)
                 {
-                    SelectGroup(_groups.FirstOrDefault());
+                    SelectGroup(GetDefaultTarget());
                 }
+                else RestartAutomaticReturn();
 
                 _volumeController?.Reconcile();
                 EmptyGroupsTextBlock.Visibility = _groups.Count == 0
@@ -209,6 +385,7 @@ namespace Project_Phantom
 
             var savedGroups = _groups.Select(group => new SavedGroupData
             {
+                Id = group.Id,
                 Name = group.Name,
                 VolumePercent = group.VolumePercent,
                 TrayBackgroundColor = group.TrayBackgroundColor,
@@ -224,13 +401,20 @@ namespace Project_Phantom
                 }).ToList()
             }).ToList();
 
-            var saveResult = GroupPersistenceService.Save(savedGroups);
+            if (_hotkeyService is not null)
+            {
+                _settings.VolumeUpShortcut = GroupPersistenceService.WriteShortcut(
+                    _hotkeyService.GetVolumeShortcut(VolumeCommand.Up), true);
+                _settings.VolumeDownShortcut = GroupPersistenceService.WriteShortcut(
+                    _hotkeyService.GetVolumeShortcut(VolumeCommand.Down), true);
+            }
+            var saveResult = GroupPersistenceService.Save(savedGroups, _settings);
             ShowPersistenceWarning(saveResult.Warning);
         }
 
-        private GroupItem CreateGroup(string name, int volumePercent = 100)
+        private GroupItem CreateGroup(string name, int volumePercent = 100, Guid? id = null)
         {
-            var group = new GroupItem(name, volumePercent);
+            var group = new GroupItem(name, volumePercent, id);
             group.PropertyChanged += Group_PropertyChanged;
             return group;
         }
@@ -272,8 +456,129 @@ namespace Project_Phantom
             }
         }
 
+        private void WindowLayout_Loaded(object sender, RoutedEventArgs e)
+        {
+            WindowLayout.Loaded -= WindowLayout_Loaded;
+            _chromeXamlRoot = WindowLayout.XamlRoot;
+            if (_chromeXamlRoot is not null) _chromeXamlRoot.Changed += TitleBarXamlRoot_Changed;
+            UpdateTitleBarMetrics();
+            UpdateTitleBarColors();
+        }
+
+        private void AppWindow_ChromeChanged(AppWindow sender, AppWindowChangedEventArgs args)
+        {
+            TraceWindowState($"AppWindow.Changed: size={args.DidSizeChange}, position={args.DidPositionChange}, presenter={args.DidPresenterChange}, visibility={args.DidVisibilityChange}");
+            UpdateTitleBarMetrics();
+        }
+
+        private void TitleBarXamlRoot_Changed(XamlRoot sender, XamlRootChangedEventArgs args)
+        {
+            TraceWindowState("XamlRoot.Changed");
+            UpdateTitleBarMetrics();
+        }
+
+        private void UpdateTitleBarMetrics()
+        {
+            if (_appWindow is null) return;
+            // Minimized caption metrics can be transiently negative (for example,
+            // RightInset = -8). Keep the last valid XAML layout until restoration.
+            if (_appWindow.Presenter is OverlappedPresenter presenter &&
+                presenter.State == OverlappedPresenterState.Minimized)
+            {
+                TraceWindowState("Title-bar metrics skipped: minimized");
+                return;
+            }
+#if DEBUG
+            _chromeDebugDepth++;
+#endif
+            TraceWindowState("Title-bar metrics BEGIN");
+            try
+            {
+                var scale = WindowLayout.XamlRoot?.RasterizationScale ?? 1;
+                var titleBar = _appWindow.TitleBar;
+                var leftInset = titleBar.LeftInset;
+                var rightInset = titleBar.RightInset;
+                var nativeHeight = titleBar.Height;
+                if (!double.IsFinite(scale) || scale <= 0 ||
+                    leftInset < 0 || rightInset < 0 || nativeHeight <= 0)
+                {
+                    TraceWindowState("Title-bar metrics skipped: invalid native metrics/scale");
+                    return;
+                }
+                var leftWidth = leftInset / scale;
+                var rightWidth = rightInset / scale;
+                var height = Math.Max(48, nativeHeight / scale);
+                // Validate the entire snapshot before assigning any layout property.
+                if (!double.IsFinite(leftWidth) || leftWidth < 0 ||
+                    !double.IsFinite(rightWidth) || rightWidth < 0 ||
+                    !double.IsFinite(height) || height <= 0)
+                {
+                    TraceWindowState("Title-bar metrics skipped: invalid logical dimensions");
+                    return;
+                }
+                // AppWindow metrics are physical pixels; XAML uses logical pixels.
+                // Only the middle column is draggable; caption-button insets stay outside it.
+                TitleBarLeftInset.Width = new GridLength(leftWidth);
+                TitleBarRightInset.Width = new GridLength(rightWidth);
+                ChromeTitleBar.Height = height;
+                TraceWindowState("Title-bar metrics END");
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[WindowDebug] Title-bar metrics exception; HRESULT=0x{ex.HResult:X8}: {ex}");
+                throw; // Diagnostics only: preserve the original exception behavior.
+            }
+            finally
+            {
+#if DEBUG
+                _chromeDebugDepth--;
+#endif
+            }
+        }
+
+        [System.Diagnostics.Conditional("DEBUG")]
+        private void TraceWindowState(string reason)
+        {
+#if DEBUG
+            // Temporary, bounded trace. Never let diagnostic getters cause a new crash.
+            if (++_windowDebugLines > 300) return;
+            try
+            {
+                var root = WindowLayout.XamlRoot;
+                var bar = _appWindow?.TitleBar;
+                var state = (_appWindow?.Presenter as OverlappedPresenter)?.State;
+                System.Diagnostics.Debug.WriteLine(
+                    $"[WindowDebug] #{_windowDebugLines} {reason}; thread={Environment.CurrentManagedThreadId}; UI={DispatcherQueue.HasThreadAccess}; " +
+                    $"visible={_appWindow?.IsVisible}; presenter={state}; windowSize={_appWindow?.Size}; " +
+                    $"rootSize={root?.Size}; scale={root?.RasterizationScale}; rootVisible={root?.IsHostVisible}; " +
+                    $"insets={bar?.LeftInset}/{bar?.RightInset}; nativeHeight={bar?.Height}; " +
+                    $"xamlHeight={ChromeTitleBar.Height}; actualHeight={ChromeTitleBar.ActualHeight}; metricsDepth={_chromeDebugDepth}; exiting={_allowClose}");
+            }
+            catch (Exception ex) { System.Diagnostics.Debug.WriteLine($"[WindowDebug] State trace failed: {ex}"); }
+#endif
+        }
+
+        private void UpdateTitleBarColors()
+        {
+            if (_appWindow is null) return;
+            var titleBar = _appWindow.TitleBar;
+            titleBar.ButtonBackgroundColor = Microsoft.UI.Colors.Transparent;
+            titleBar.ButtonInactiveBackgroundColor = Microsoft.UI.Colors.Transparent;
+            titleBar.ButtonForegroundColor = WindowLayout.ActualTheme == ElementTheme.Dark
+                ? Microsoft.UI.Colors.White : Microsoft.UI.Colors.Black;
+            titleBar.ButtonInactiveForegroundColor = Microsoft.UI.Colors.Gray;
+        }
+
         private void MainWindow_Closed(object sender, WindowEventArgs args)
         {
+            _trayMenuWindow?.Close();
+            _trayMenuWindow = null;
+            _viewTransition?.Stop();
+            _viewTransition = null;
+            TraceWindowState("MainWindow.Closed");
+            if (_appWindow is not null) _appWindow.Changed -= AppWindow_ChromeChanged;
+            if (_chromeXamlRoot is not null) _chromeXamlRoot.Changed -= TitleBarXamlRoot_Changed;
+            StopAutomaticReturn();
             _hotkeyService?.Dispose();
             _hotkeyService = null;
             _trayIconService?.Dispose();
@@ -286,6 +591,7 @@ namespace Project_Phantom
 
         private void AppWindow_Closing(AppWindow sender, AppWindowClosingEventArgs args)
         {
+            TraceWindowState("AppWindow.Closing");
             if (_allowClose)
             {
                 return;
@@ -298,9 +604,7 @@ namespace Project_Phantom
         private void SelectGroupButton_Click(object sender, RoutedEventArgs e)
         {
             if (sender is Button button && button.DataContext is GroupItem group)
-            {
                 SelectGroup(group);
-            }
         }
 
         private async void ShortcutButton_Click(object sender, RoutedEventArgs e)
@@ -327,12 +631,52 @@ namespace Project_Phantom
                 _hotkeyService.TryResumeAfterRecording(out var error);
                 ShowHotkeyWarning(error);
                 return error;
-            }, shortcut => _hotkeyService?.FindOwner(group, shortcut), group.ShortcutError)
+            }, shortcut => _hotkeyService?.FindConflictName(group, null, shortcut), group.ShortcutError)
             {
                 OwnerWindowHandle = WinRT.Interop.WindowNative.GetWindowHandle(this),
                 ReportRawInputWarning = ShowHotkeyWarning,
                 XamlRoot = Content.XamlRoot,
                 Title = $"Shortcut for {group.Name}"
+            };
+            await dialog.ShowAsync();
+        }
+
+        private void UpdateVolumeShortcutLabels()
+        {
+            VolumeUpShortcutText.Text = _hotkeyService?.GetVolumeLabel(VolumeCommand.Up) ?? "Not assigned";
+            VolumeDownShortcutText.Text = _hotkeyService?.GetVolumeLabel(VolumeCommand.Down) ?? "Not assigned";
+        }
+
+        private async void VolumeShortcutButton_Click(object sender, RoutedEventArgs e)
+        {
+            if (sender is not Button button || _hotkeyService is null) return;
+            var command = button.Tag as string == "Up" ? VolumeCommand.Up : VolumeCommand.Down;
+            var dialog = new GroupShortcutDialog(_hotkeyService.GetVolumeShortcut(command), (shortcut, allowReassign) =>
+            {
+                if (_hotkeyService is null) return "Global shortcuts are unavailable.";
+                if (!_hotkeyService.TryAssignVolumeCommand(command, shortcut, out var error, allowReassign)) return error;
+                ShowHotkeyWarning(null);
+                _saveDebounceTimer?.Stop();
+                SaveGroups(); // Saves the command and any previous owner cleared by reassignment together.
+                return null;
+            }, () =>
+            {
+                if (_hotkeyService is null) return "Global shortcuts are unavailable.";
+                _hotkeyService.TrySuspendForRecording(out var error);
+                if (error is not null) ShowHotkeyWarning(error);
+                return error;
+            }, () =>
+            {
+                if (_hotkeyService is null) return "Global shortcuts are unavailable.";
+                _hotkeyService.TryResumeAfterRecording(out var error);
+                ShowHotkeyWarning(error);
+                return error;
+            }, shortcut => _hotkeyService?.FindConflictName(null, command, shortcut), _hotkeyService.GetVolumeError(command))
+            {
+                OwnerWindowHandle = WinRT.Interop.WindowNative.GetWindowHandle(this),
+                ReportRawInputWarning = ShowHotkeyWarning,
+                XamlRoot = Content.XamlRoot,
+                Title = $"Volume {command} shortcut"
             };
             await dialog.ShowAsync();
         }
@@ -353,24 +697,134 @@ namespace Project_Phantom
                 return;
             }
 
+            // Explicit selection of the same non-default group is activity too.
+            // Set the timer after updating selection, or before returning unchanged.
             if (ReferenceEquals(_selectedGroup, group))
             {
+                RestartAutomaticReturn();
                 return;
             }
 
-            if (_selectedGroup is not null)
-            {
-                _selectedGroup.IsSelected = false;
-            }
-
+            if (_selectedGroup is not null) _selectedGroup.IsSelected = false;
             _selectedGroup = group;
-            if (_selectedGroup is not null)
-            {
-                _selectedGroup.IsSelected = true;
-            }
+            if (_selectedGroup is not null) _selectedGroup.IsSelected = true;
 
             _trayIconService?.UpdateSelectedGroup(_selectedGroup?.Name, _selectedGroup?.VolumePercent ?? 100,
                 _selectedGroup?.AccentColor);
+            RestartAutomaticReturn();
+        }
+
+        private GroupItem? GetDefaultTarget() => _groups.FirstOrDefault(group => group.Id == _settings.DefaultGroupId);
+
+        private void StopAutomaticReturn()
+        {
+            _returnDeadline = null;
+            _automaticReturnTimer?.Stop();
+        }
+
+        private void RestartAutomaticReturn()
+        {
+            StopAutomaticReturn();
+            if (_allowClose || !_settings.AutomaticReturnEnabled ||
+                ReferenceEquals(_selectedGroup, GetDefaultTarget()) || _automaticReturnTimer is null) return;
+            _returnDeadline = System.Diagnostics.Stopwatch.GetTimestamp() +
+                (long)_settings.ReturnDelaySeconds * System.Diagnostics.Stopwatch.Frequency;
+            _automaticReturnTimer.Interval = TimeSpan.FromSeconds(_settings.ReturnDelaySeconds);
+            _automaticReturnTimer.Start();
+        }
+
+        private void AutomaticReturnTimer_Tick(Microsoft.UI.Dispatching.DispatcherQueueTimer sender, object args)
+        {
+            if (_allowClose || !_settings.AutomaticReturnEnabled || _returnDeadline is not long deadline ||
+                ReferenceEquals(_selectedGroup, GetDefaultTarget()))
+            {
+                StopAutomaticReturn();
+                return;
+            }
+            // Stop/Start can leave a queued tick. Always check the current monotonic
+            // deadline, so an old callback cannot override a newer selection/command.
+            var remaining = deadline - System.Diagnostics.Stopwatch.GetTimestamp();
+            if (remaining > 0)
+            {
+                sender.Interval = TimeSpan.FromSeconds(Math.Max(0.001,
+                    (double)remaining / System.Diagnostics.Stopwatch.Frequency));
+                sender.Start();
+                return;
+            }
+            StopAutomaticReturn();
+            SelectGroup(GetDefaultTarget());
+        }
+
+        private void RefreshDefaultTargets()
+        {
+            _updatingDefaultControls = true;
+            try
+            {
+                DefaultTargetComboBox.Items.Clear();
+                var master = new ComboBoxItem { Content = "Master Volume", Tag = Guid.Empty };
+                DefaultTargetComboBox.Items.Add(master);
+                DefaultTargetComboBox.SelectedItem = master;
+                foreach (var group in _groups)
+                {
+                    var item = new ComboBoxItem { Content = group.Name, Tag = group.Id };
+                    DefaultTargetComboBox.Items.Add(item);
+                    if (group.Id == _settings.DefaultGroupId) DefaultTargetComboBox.SelectedItem = item;
+                }
+            }
+            finally { _updatingDefaultControls = false; }
+        }
+
+        private void DefaultTargetComboBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        {
+            if (_updatingDefaultControls || DefaultTargetComboBox.SelectedItem is not ComboBoxItem item ||
+                item.Tag is not Guid id) return;
+            _settings.DefaultGroupId = id == Guid.Empty ? null : id;
+            SelectGroup(GetDefaultTarget());
+            SaveGroups();
+        }
+
+        private void AutomaticReturnToggle_Toggled(object sender, RoutedEventArgs e)
+        {
+            _settings.AutomaticReturnEnabled = AutomaticReturnToggle.IsOn;
+            ReturnDelayComboBox.IsEnabled = AutomaticReturnToggle.IsOn;
+            RestartAutomaticReturn();
+            SaveGroups();
+        }
+
+        private void ReturnDelayComboBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        {
+            if (ReturnDelayComboBox.SelectedItem is not ComboBoxItem item ||
+                !int.TryParse(item.Tag as string, out var seconds)) return;
+            _settings.ReturnDelaySeconds = seconds;
+            RestartAutomaticReturn();
+            SaveGroups();
+        }
+
+        private void VolumeStepSlider_ValueChanged(object sender, RangeBaseValueChangedEventArgs e)
+        {
+            _settings.VolumeStepPercent = (int)Math.Round(e.NewValue);
+            VolumeStepText.Text = $"{_settings.VolumeStepPercent}%";
+            _saveDebounceTimer?.Stop();
+            _saveDebounceTimer?.Start();
+        }
+
+        private void AdjustVolume(int direction)
+        {
+            if (!DispatcherQueue.HasThreadAccess)
+                throw new InvalidOperationException("Volume commands must run on the UI thread.");
+            if (_allowClose || direction == 0) return;
+            // Only handled commands reset inactivity; model/mixer changes do not.
+            RestartAutomaticReturn();
+            var stepPercent = _settings.VolumeStepPercent;
+            if (_selectedGroup is not null)
+            {
+                _selectedGroup.VolumePercent = Math.Clamp(
+                    _selectedGroup.VolumePercent + Math.Sign(direction) * stepPercent, 0, 100);
+            }
+            else if (!MasterVolumeService.TryAdjust(direction, stepPercent, out var error))
+            {
+                ShowHotkeyWarning(error);
+            }
         }
 
         private void AccentColorButton_Click(object sender, RoutedEventArgs e)
@@ -391,15 +845,56 @@ namespace Project_Phantom
             flyout.ShowAt(button);
         }
 
+        private void OpenSettingsFromTray()
+        {
+            if (_allowClose) return;
+            RestoreFromTray();
+            ShowSettingsView();
+        }
+
+        private void ShowTrayMenu(Windows.Graphics.RectInt32 iconBounds)
+        {
+            if (_allowClose) return;
+            if (_trayMenuWindow is null)
+            {
+                var menu = new TrayMenuWindow(WindowLayout.ActualTheme, RestoreFromTray, OpenSettingsFromTray, ExitFromTray);
+                menu.Closed += (_, _) =>
+                {
+                    if (ReferenceEquals(_trayMenuWindow, menu)) _trayMenuWindow = null;
+                };
+                _trayMenuWindow = menu;
+            }
+            var currentMenu = _trayMenuWindow;
+            try { currentMenu.ShowAt(iconBounds); }
+            catch
+            {
+                currentMenu.Close();
+                throw; // TrayIconService shows the original native menu on failure.
+            }
+        }
+
         private void RestoreFromTray()
         {
-            _appWindow?.Show();
+            TraceWindowState("RestoreFromTray ENTER (tray/manual launch path)");
+            if (_allowClose) return; // Ignore an Open callback queued during Exit.
+            // Visibility and presenter state are separate: Show alone can leave
+            // an already-minimized window minimized. Activate only after restoring.
+            _appWindow?.Show(activateWindow: false);
+            if (_appWindow?.Presenter is OverlappedPresenter presenter &&
+                presenter.State == OverlappedPresenterState.Minimized)
+            {
+                presenter.Restore(activateWindow: false);
+            }
             Activate();
+            TraceWindowState("RestoreFromTray EXIT");
         }
 
         private void ExitFromTray()
         {
             _allowClose = true;
+            _trayMenuWindow?.Close();
+            _trayMenuWindow = null;
+            StopAutomaticReturn();
             _hotkeyService?.Dispose();
             _hotkeyService = null;
             _trayIconService?.Dispose();
@@ -418,6 +913,7 @@ namespace Project_Phantom
 
     public sealed class GroupItem : INotifyPropertyChanged
     {
+        public Guid Id { get; }
         public string Name { get; }
         public ObservableCollection<ApplicationEntry> Applications { get; } = new();
         private int _volumePercent = 100;
@@ -543,8 +1039,9 @@ namespace Project_Phantom
 
         public string SelectionLabel => IsSelected ? "Selected" : "Select";
 
-        public GroupItem(string name, int volumePercent = 100)
+        public GroupItem(string name, int volumePercent = 100, Guid? id = null)
         {
+            Id = id ?? Guid.NewGuid();
             Name = name;
             _volumePercent = Math.Clamp(volumePercent, 0, 100);
         }
