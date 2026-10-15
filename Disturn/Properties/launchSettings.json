@@ -1,0 +1,10 @@
+{
+  "profiles": {
+    "Disturn (Package)": {
+      "commandName": "MsixPackage"
+    },
+    "Disturn (Unpackaged)": {
+      "commandName": "Project"
+    }
+  }
+}
