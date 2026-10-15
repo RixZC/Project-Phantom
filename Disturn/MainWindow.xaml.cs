@@ -1,11 +1,8 @@
-using Microsoft.UI.Xaml;
+﻿using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Controls.Primitives;
-using Microsoft.UI.Xaml.Data;
-using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Media.Animation;
-using Microsoft.UI.Xaml.Navigation;
 using Microsoft.UI.Windowing;
 using System;
 using System.Collections.Generic;
@@ -13,13 +10,10 @@ using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.IO;
 using System.Linq;
-using System.Runtime.InteropServices.WindowsRuntime;
 using System.Threading.Tasks;
-using Windows.Foundation;
-using Windows.Foundation.Collections;
 
 // Hello
-// Made with ❤️ by RixZC for Hundred Plus
+// Made with â¤ï¸ by RixZC for Hundred Plus
 // 9/30/2026
 // This is the main window of the application.
 // It is the first window that is shown when the application is launched.
@@ -208,6 +202,10 @@ namespace Disturn
             UpdateVolumeShortcutLabels();
             ShowHotkeyWarning(shortcutWarnings.Count == 0 ? null : string.Join(" ", shortcutWarnings));
             // Load before subscribing so initialization cannot save over existing settings.
+            TrayAppearanceComboBox.SelectedItem = TrayAppearanceComboBox.Items.OfType<ComboBoxItem>()
+                .First(item => (string)item.Tag == _settings.TrayIconAppearance);
+            _trayIconService?.SetAppearance(_settings.TrayIconAppearance);
+            TrayAppearanceComboBox.SelectionChanged += TrayAppearanceComboBox_SelectionChanged;
             VolumeStepSlider.Value = _settings.VolumeStepPercent;
             VolumeStepText.Text = $"{_settings.VolumeStepPercent}%";
             VolumeStepSlider.ValueChanged += VolumeStepSlider_ValueChanged;
@@ -231,6 +229,33 @@ namespace Disturn
             if (SettingsView.Visibility != Visibility.Visible)
                 SwitchView(SoundMixerView, SettingsView, forward: true);
             SettingsBackButton.Focus(FocusState.Programmatic);
+        }
+
+        private async void OpenTaskbarSettingsButton_Click(object sender, RoutedEventArgs e)
+        {
+            if (sender is not Button button) return;
+            button.IsEnabled = false;
+            TaskbarSettingsStatusText.Text = "";
+            TaskbarSettingsStatusText.Visibility = Visibility.Collapsed;
+            var launched = false;
+            try
+            {
+                launched = await Windows.System.Launcher.LaunchUriAsync(new Uri("ms-settings:taskbar"));
+            }
+            catch (Exception ex)
+            {
+                // Keep a failed external Settings launch from escaping this UI callback.
+                System.Diagnostics.Debug.WriteLine("Could not open Windows taskbar settings: " + ex);
+            }
+            finally
+            {
+                button.IsEnabled = true;
+                if (!launched)
+                {
+                    TaskbarSettingsStatusText.Text = "Windows Settings could not be opened. Open Settings > Personalization > Taskbar manually.";
+                    TaskbarSettingsStatusText.Visibility = Visibility.Visible;
+                }
+            }
         }
 
         private void SettingsBackButton_Click(object sender, RoutedEventArgs e)
@@ -290,10 +315,7 @@ namespace Disturn
                 var group = CreateGroup(dialog.GroupName);
                 _groups.Add(group);
                 RefreshDefaultTargets();
-                if (_selectedGroup is null)
-                {
-                    SelectGroup(group);
-                }
+                // Creating a group does not select it; keep Master Volume/logo until selected.
 
                 EmptyGroupsTextBlock.Visibility = Visibility.Collapsed;
                 // Initial defaults for newly created first through fourth groups; never
@@ -801,6 +823,14 @@ namespace Disturn
             SaveGroups();
         }
 
+        private void TrayAppearanceComboBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        {
+            if (TrayAppearanceComboBox.SelectedItem is not ComboBoxItem item) return;
+            _settings.TrayIconAppearance = item.Tag as string ?? TrayIconAppearance.Automatic;
+            _trayIconService?.SetAppearance(_settings.TrayIconAppearance);
+            SaveGroups();
+        }
+
         private void VolumeStepSlider_ValueChanged(object sender, RangeBaseValueChangedEventArgs e)
         {
             _settings.VolumeStepPercent = (int)Math.Round(e.NewValue);
@@ -1048,3 +1078,5 @@ namespace Disturn
         }
     }
 }
+
+

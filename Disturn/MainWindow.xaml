@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 <Window
     x:Class="Disturn.MainWindow"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
@@ -220,7 +220,7 @@
                                                         </StackPanel>
                                                         <Button
                                                             Grid.Column="1"
-                                                            Content="×"
+                                                            Content="Ã—"
                                                             FontSize="18"
                                                             Width="32"
                                                             Height="32"
@@ -365,6 +365,51 @@
                 </Border>
             </StackPanel>
 
+            <StackPanel Spacing="8" Margin="0,8,0,0">
+                <TextBlock Text="Tray icon appearance" FontSize="20" FontWeight="SemiBold" />
+                <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                        BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                        BorderThickness="1" CornerRadius="4" Padding="16">
+                    <StackPanel Spacing="8">
+                        <TextBlock Text="Choose the volume indicator's text color for your taskbar."
+                                   TextWrapping="Wrap" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                        <ComboBox x:Name="TrayAppearanceComboBox" MinWidth="220"
+                                  AutomationProperties.Name="Tray icon appearance">
+                            <ComboBoxItem Content="Automatic (follow Windows)" Tag="Automatic" />
+                            <ComboBoxItem Content="Light mode" Tag="Light" />
+                            <ComboBoxItem Content="Dark mode" Tag="Dark" />
+                        </ComboBox>
+                    </StackPanel>
+                </Border>
+            </StackPanel>
+
+            <StackPanel Spacing="8" Margin="0,8,0,0">
+                <TextBlock Text="Show Disturn on taskbar" FontSize="20" FontWeight="SemiBold"
+                           TextWrapping="Wrap" />
+                <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                        BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                        BorderThickness="1" CornerRadius="4" Padding="16">
+                    <StackPanel Spacing="12">
+                        <Grid ColumnSpacing="16">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Text="Keep the volume indicator visible outside the hidden-icons menu."
+                                       TextWrapping="Wrap" VerticalAlignment="Center" />
+                            <Button Grid.Column="1" Content="Open Settings" VerticalAlignment="Center"
+                                    Click="OpenTaskbarSettingsButton_Click"
+                                    AutomationProperties.Name="Open Windows taskbar settings" />
+                        </Grid>
+                        <TextBlock Text="In Windows Settings, expand &quot;Other system tray icons&quot; and enable Disturn."
+                                   TextWrapping="Wrap" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                        <TextBlock x:Name="TaskbarSettingsStatusText" TextWrapping="Wrap"
+                                   Foreground="{ThemeResource SystemFillColorCautionBrush}"
+                                   Visibility="Collapsed" />
+                    </StackPanel>
+                </Border>
+            </StackPanel>
+
             <StackPanel Spacing="4" Margin="0,24,0,8">
                 <TextBlock Text="Disturn - Project Phantom" FontSize="14" FontWeight="SemiBold"
                            TextAlignment="Center" Foreground="{ThemeResource TextFillColorPrimaryBrush}" />
@@ -377,3 +422,4 @@
     </ScrollViewer>
     </Grid>
 </Window>
+

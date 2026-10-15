@@ -2,6 +2,7 @@ using Microsoft.UI.Dispatching;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Runtime.InteropServices;
 
 namespace Disturn;
 
@@ -30,9 +31,9 @@ internal sealed class GroupVolumeController : IDisposable
 
     public void ApplyGroup(GroupItem group)
     {
-        foreach (var tracked in _sessions.Values.Where(item => ReferenceEquals(item.Group, group)).ToArray())
+        foreach (var pair in _sessions.Where(pair => ReferenceEquals(pair.Value.Group, group)).ToArray())
         {
-            ApplyTarget(tracked, group);
+            ApplyTarget(pair.Key, pair.Value, group);
         }
     }
 
@@ -48,7 +49,7 @@ internal sealed class GroupVolumeController : IDisposable
         {
             active = AudioSessionService.GetActiveSessions();
         }
-        catch
+        catch (Exception ex) when (ex is COMException or InvalidOperationException or UnauthorizedAccessException)
         {
             return;
         }
@@ -105,13 +106,17 @@ internal sealed class GroupVolumeController : IDisposable
 
         var tracked = new TrackedSession(group, control);
         _sessions[entry.SessionKey] = tracked;
-        ApplyTarget(tracked, group);
+        ApplyTarget(entry.SessionKey, tracked, group);
     }
 
-    private static void ApplyTarget(TrackedSession tracked, GroupItem group)
+    private void ApplyTarget(string key, TrackedSession tracked, GroupItem group)
     {
         var target = Math.Clamp(group.VolumePercent / 100f, 0f, 1f);
-        tracked.Control.TrySetVolume(target);
+        if (!tracked.Control.TrySetVolume(target))
+        {
+            // Remove failed handles so the next reconciliation can reopen the session.
+            Release(key, tracked);
+        }
     }
 
     private void Release(string key, TrackedSession tracked)

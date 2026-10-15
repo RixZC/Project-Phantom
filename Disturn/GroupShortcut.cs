@@ -17,8 +17,6 @@ public sealed record GroupShortcut(uint VirtualKey, uint Modifiers = 0)
     public bool Shift => (Modifiers & 4) != 0;
     public bool Alt => (Modifiers & 1) != 0;
 
-    public static bool IsNavigationKey(uint key) => key is >= 0x21 and <= 0x28 or 0x2D or 0x2E;
-
     public bool IsSameCombination(GroupShortcut? other) =>
         other is not null && VirtualKey == other.VirtualKey && Modifiers == other.Modifiers;
 
@@ -51,7 +49,6 @@ public sealed record GroupShortcut(uint VirtualKey, uint Modifiers = 0)
         }
     }
 
-    public bool IsPhysicalNumpad => PhysicalNumpadKey is not null;
     private uint DisplayModifiers => PhysicalModifiers is uint physical && (physical & ~7u) == 0
         ? physical : Modifiers;
 

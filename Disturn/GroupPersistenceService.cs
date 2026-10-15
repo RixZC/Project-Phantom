@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -18,8 +18,8 @@ internal static class GroupPersistenceService
         PropertyNameCaseInsensitive = true
     };
 
-    // Keep the existing per-user location across the rename: no copy, migration,
-    // schema change, or risk of overwriting a user's existing groups/settings.
+    // Keep the legacy logical location and schema. MSIX may redirect this path
+    // to private LocalCache data, imported only when the unpackaged file is absent.
     private static string SavePath => Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
         "Project Phantom",
@@ -27,7 +27,42 @@ internal static class GroupPersistenceService
 
     public static GroupLoadResult Load()
     {
-        var path = SavePath;
+        try
+        {
+            var source = DeploymentIdentity.HasPackageIdentity ? null : DeploymentIdentity.LegacyPackagedSavePath(
+                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData));
+            return LoadWithMigration(SavePath, source);
+        }
+        catch (System.ComponentModel.Win32Exception)
+        {
+            return CannotLoad("The previous package data location could not be verified. Existing files were preserved and saving is disabled.");
+        }
+    }
+
+    internal static GroupLoadResult LoadWithMigration(string destination, string? source)
+    {
+        var location = GroupDataMigration.Prepare(destination, source);
+        var loaded = LoadFile(location.ReadPath);
+        var canSave = location.CanSave && loaded.CanSave;
+        var warning = location.Warning ?? loaded.Warning;
+        if (canSave && loaded.NeedsSave)
+        {
+            try { GroupDataMigration.BackupBeforeUpgrade(location.ReadPath); }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or SecurityException)
+            {
+                canSave = false;
+                warning = "Existing settings were loaded, but a pre-upgrade backup could not be created. The original file was preserved and saving is disabled.";
+            }
+        }
+        return new GroupLoadResult(loaded.Groups, canSave, warning)
+        {
+            Settings = loaded.Settings,
+            NeedsSave = canSave && loaded.NeedsSave
+        };
+    }
+
+    internal static GroupLoadResult LoadFile(string path)
+    {
         if (!File.Exists(path))
         {
             return new GroupLoadResult(new List<SavedGroupData>(), canSave: true, warning: null);
@@ -271,6 +306,14 @@ internal sealed class SavedGroupsDocument
 
 internal sealed class SavedApplicationSettings
 {
+    private string _trayIconAppearance = Disturn.TrayIconAppearance.Automatic;
+    // Additive global setting: old saves default to Automatic; group fields stay intact.
+    public string TrayIconAppearance
+    {
+        get => _trayIconAppearance;
+        set => _trayIconAppearance = Disturn.TrayIconAppearance.Normalize(value);
+    }
+
     public bool LaunchWithWindows { get; set; }
     public bool StartMinimizedToTray { get; set; }
     // Null is Master Volume, independent of group names and list positions.
@@ -317,3 +360,4 @@ internal sealed class SavedApplicationData
     public string ProcessName { get; set; } = "";
     public string? ExecutablePath { get; set; }
 }
+

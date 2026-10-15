@@ -19,91 +19,99 @@ internal static class AudioSessionService
         var seenSessions = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var windowTitles = GetWindowTitlesByProcessId();
 
-        using var deviceEnumerator = new MMDeviceEnumerator();
-        var devices = deviceEnumerator.EnumerateAudioEndPoints(DataFlow.Render, DeviceState.Active);
-
-        foreach (var device in devices)
+        try
         {
-            using (device)
+            using var deviceEnumerator = new MMDeviceEnumerator();
+            var devices = deviceEnumerator.EnumerateAudioEndPoints(DataFlow.Render, DeviceState.Active);
+
+            foreach (var device in devices)
             {
-                try
+                using (device)
                 {
-                    var deviceId = device.ID;
-                    var deviceName = device.FriendlyName;
-                    var sessions = device.AudioSessionManager.Sessions;
-
-                    for (var index = 0; index < sessions.Count; index++)
+                    try
                     {
-                        AudioSessionControl? session = null;
-                        try
-                        {
-                            session = sessions[index];
-                            if (session.State != AudioSessionState.AudioSessionStateActive || session.IsSystemSoundsSession)
-                            {
-                                continue;
-                            }
+                        var deviceId = device.ID;
+                        var deviceName = device.FriendlyName;
+                        var sessions = device.AudioSessionManager.Sessions;
 
-                            string sessionInstanceId;
+                        for (var index = 0; index < sessions.Count; index++)
+                        {
+                            AudioSessionControl? session = null;
                             try
                             {
-                                sessionInstanceId = session.GetSessionInstanceIdentifier;
-                            }
-                            catch (Exception ex) when (ex is COMException or InvalidOperationException)
-                            {
-                                continue;
-                            }
+                                session = sessions[index];
+                                if (session.State != AudioSessionState.AudioSessionStateActive || session.IsSystemSoundsSession)
+                                {
+                                    continue;
+                                }
 
-                            if (string.IsNullOrWhiteSpace(sessionInstanceId))
-                            {
-                                continue;
-                            }
+                                string sessionInstanceId;
+                                try
+                                {
+                                    sessionInstanceId = session.GetSessionInstanceIdentifier;
+                                }
+                                catch (Exception ex) when (ex is COMException or InvalidOperationException or UnauthorizedAccessException)
+                                {
+                                    continue;
+                                }
 
-                            uint processId;
-                            try
-                            {
-                                processId = session.GetProcessID;
-                            }
-                            catch (Exception ex) when (ex is COMException or InvalidOperationException)
-                            {
-                                processId = 0;
-                            }
+                                if (string.IsNullOrWhiteSpace(sessionInstanceId))
+                                {
+                                    continue;
+                                }
 
-                            var processName = GetProcessName(processId);
-                            var windowTitle = windowTitles.TryGetValue(processId, out var title)
-                                ? title
-                                : "";
-                            var sessionDisplayName = GetSessionDisplayName(session);
-                            var displayName = FirstNonEmpty(windowTitle, sessionDisplayName, processName);
+                                uint processId;
+                                try
+                                {
+                                    processId = session.GetProcessID;
+                                }
+                                catch (Exception ex) when (ex is COMException or InvalidOperationException or UnauthorizedAccessException)
+                                {
+                                    processId = 0;
+                                }
 
-                            var entry = new ApplicationEntry(
-                                displayName,
-                                processName,
-                                processId <= int.MaxValue ? (int)processId : 0,
-                                deviceName,
-                                deviceId,
-                                sessionInstanceId,
-                                GetExecutablePath(processId));
+                                var processName = GetProcessName(processId);
+                                var windowTitle = windowTitles.TryGetValue(processId, out var title)
+                                    ? title
+                                    : "";
+                                var sessionDisplayName = GetSessionDisplayName(session);
+                                var displayName = FirstNonEmpty(windowTitle, sessionDisplayName, processName);
 
-                            if (seenSessions.Add(entry.SessionKey))
-                            {
-                                entries.Add(entry);
+                                var entry = new ApplicationEntry(
+                                    displayName,
+                                    processName,
+                                    processId <= int.MaxValue ? (int)processId : 0,
+                                    deviceName,
+                                    deviceId,
+                                    sessionInstanceId,
+                                    GetExecutablePath(processId));
+
+                                if (seenSessions.Add(entry.SessionKey))
+                                {
+                                    entries.Add(entry);
+                                }
                             }
-                        }
-                        catch (Exception ex) when (ex is COMException or InvalidOperationException)
-                        {
-                            // A session can disappear while the list is being read.
-                        }
-                        finally
-                        {
-                            session?.Dispose();
+                            catch (Exception ex) when (ex is COMException or InvalidOperationException or UnauthorizedAccessException)
+                            {
+                                // A session can disappear while the list is being read.
+                            }
+                            finally
+                            {
+                                session?.Dispose();
+                            }
                         }
                     }
-                }
-                catch (Exception ex) when (ex is COMException or InvalidOperationException)
-                {
-                    // Skip an output device that becomes unavailable during enumeration.
+                    catch (Exception ex) when (ex is COMException or InvalidOperationException or UnauthorizedAccessException)
+                    {
+                        // Skip an output device that becomes unavailable during enumeration.
+                    }
                 }
             }
+        }
+        catch (Exception ex) when (ex is COMException or InvalidOperationException or UnauthorizedAccessException)
+        {
+            // Endpoint enumeration can fail before any device is available.
+            // Return any entries already collected and retry on the next reconciliation.
         }
 
         AddSessionSuffixes(entries);
@@ -203,60 +211,68 @@ internal static class AudioSessionService
 
     public static AudioSessionVolumeControl? TryOpenActiveSession(ApplicationEntry entry)
     {
-        using var deviceEnumerator = new MMDeviceEnumerator();
-        var devices = deviceEnumerator.EnumerateAudioEndPoints(DataFlow.Render, DeviceState.Active);
-
-        foreach (var device in devices)
+        try
         {
-            using (device)
+            using var deviceEnumerator = new MMDeviceEnumerator();
+            var devices = deviceEnumerator.EnumerateAudioEndPoints(DataFlow.Render, DeviceState.Active);
+
+            foreach (var device in devices)
             {
-                if (!string.Equals(device.ID, entry.DeviceId, StringComparison.OrdinalIgnoreCase))
+                using (device)
                 {
-                    continue;
-                }
-
-                try
-                {
-                    var sessions = device.AudioSessionManager.Sessions;
-                    for (var index = 0; index < sessions.Count; index++)
+                    try
                     {
-                        AudioSessionControl? session = null;
-                        try
+                        if (!string.Equals(device.ID, entry.DeviceId, StringComparison.OrdinalIgnoreCase))
                         {
-                            session = sessions[index];
-                            if (session.State != AudioSessionState.AudioSessionStateActive ||
-                                session.IsSystemSoundsSession ||
-                                !string.Equals(session.GetSessionInstanceIdentifier, entry.SessionInstanceId, StringComparison.OrdinalIgnoreCase))
-                            {
-                                continue;
-                            }
-
-                            var processId = session.GetProcessID;
-                            if (entry.ProcessId != 0 && processId != (uint)entry.ProcessId)
-                            {
-                                continue;
-                            }
-
-                            var volume = session.SimpleAudioVolume;
-                            var selectedSession = session;
-                            session = null;
-                            return new AudioSessionVolumeControl(selectedSession, volume);
+                            continue;
                         }
-                        catch (Exception ex) when (ex is COMException or InvalidOperationException)
+
+                        var sessions = device.AudioSessionManager.Sessions;
+                        for (var index = 0; index < sessions.Count; index++)
                         {
-                            // The session may end while it is being reopened.
-                        }
-                        finally
-                        {
-                            session?.Dispose();
+                            AudioSessionControl? session = null;
+                            try
+                            {
+                                session = sessions[index];
+                                if (session.State != AudioSessionState.AudioSessionStateActive ||
+                                    session.IsSystemSoundsSession ||
+                                    !string.Equals(session.GetSessionInstanceIdentifier, entry.SessionInstanceId, StringComparison.OrdinalIgnoreCase))
+                                {
+                                    continue;
+                                }
+
+                                var processId = session.GetProcessID;
+                                if (entry.ProcessId != 0 && processId != (uint)entry.ProcessId)
+                                {
+                                    continue;
+                                }
+
+                                var volume = session.SimpleAudioVolume;
+                                var selectedSession = session;
+                                session = null;
+                                return new AudioSessionVolumeControl(selectedSession, volume);
+                            }
+                            catch (Exception ex) when (ex is COMException or InvalidOperationException or UnauthorizedAccessException)
+                            {
+                                // The session may end while it is being reopened.
+                            }
+                            finally
+                            {
+                                session?.Dispose();
+                            }
                         }
                     }
-                }
-                catch (Exception ex) when (ex is COMException or InvalidOperationException)
-                {
-                    // The endpoint may become unavailable during selection.
+                    catch (Exception ex) when (ex is COMException or InvalidOperationException or UnauthorizedAccessException)
+                    {
+                        // The endpoint may become unavailable during selection.
+                    }
                 }
             }
+        }
+        catch (Exception ex) when (ex is COMException or InvalidOperationException or UnauthorizedAccessException)
+        {
+            // The endpoint can disappear between discovery and reopening.
+            // Leave the session untracked so a later reconciliation can retry.
         }
 
         return null;

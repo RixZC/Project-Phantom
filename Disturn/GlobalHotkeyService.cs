@@ -261,7 +261,6 @@ internal sealed class GlobalHotkeyService : IDisposable
     private sealed record Registration(int Id, GroupItem? Group, GroupShortcut Shortcut, VolumeCommand? Command = null)
     {
         public uint NativeModifiers => Shortcut.Modifiers | (Group is not null ? ModNoRepeat : 0);
-        public string OwnerLabel => Group is not null ? $"group '{Group.Name}'" : $"Volume {Command}";
     }
 
     public bool TrySuspendForRecording(out string? error)

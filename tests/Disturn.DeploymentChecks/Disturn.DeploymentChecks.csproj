@@ -1,0 +1,20 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <SelfContained>true</SelfContained>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="../../Disturn/DeploymentIdentity.cs" Link="DeploymentIdentity.cs" />
+    <Compile Include="../../Disturn/UnpackagedStartupRegistration.cs" Link="UnpackagedStartupRegistration.cs" />
+    <Compile Include="../../Disturn/GroupDataMigration.cs" Link="GroupDataMigration.cs" />
+    <Compile Include="../../Disturn/GroupPersistenceService.cs" Link="GroupPersistenceService.cs" />
+    <Compile Include="../../Disturn/TrayIconAppearance.cs" Link="TrayIconAppearance.cs" />
+    <Compile Include="../../Disturn/GroupTrayColors.cs" Link="GroupTrayColors.cs" />
+    <Compile Include="../../Disturn/GroupShortcut.cs" Link="GroupShortcut.cs" />
+  </ItemGroup>
+</Project>
+

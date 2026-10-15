@@ -1,4 +1,4 @@
-using Microsoft.UI.Dispatching;
+﻿using Microsoft.UI.Dispatching;
 using System;
 using System.ComponentModel;
 using System.Globalization;
@@ -20,6 +20,7 @@ internal sealed class TrayIconService : IDisposable
     private const uint WmDpiChanged = 0x02E0;
     private const uint WmDisplayChange = 0x007E;
     private const uint WmSettingChange = 0x001A;
+    private const uint WmThemeChanged = 0x031A;
     private const uint WmNull = 0x0000;
     private const uint NimAdd = 0;
     private const uint NimModify = 1;
@@ -43,7 +44,6 @@ internal sealed class TrayIconService : IDisposable
     private const int SmallIconHeightMetric = 50;
     private const int GdipUnitPixel = 2;
     private const int GdipFontStyleRegular = 0;
-    private const int GdipFontStyleBold = 1;
     private const int GdipStringFormatNoWrap = 0x1000;
     private const int GdipStringFormatNoClip = 0x4000;
     private const int GdipStringFormatNoFitBlackBox = 4;
@@ -67,6 +67,8 @@ internal sealed class TrayIconService : IDisposable
     private string? _selectedGroupName;
     private int _selectedGroupVolume = 100;
     private string _selectedAccentColor = GroupTrayColors.DefaultAccent;
+    private string _appearance = TrayIconAppearance.Automatic;
+    private bool _systemUsesLightTheme = TrayIconAppearance.ReadSystemUsesLightTheme();
     private bool _disposed;
 
     public TrayIconService(IntPtr windowHandle, DispatcherQueue dispatcher, Action openAction, Action exitAction,
@@ -101,7 +103,7 @@ internal sealed class TrayIconService : IDisposable
             throw new Win32Exception(Marshal.GetLastWin32Error(), "Could not connect the Disturn tray icon to its window.");
         }
 
-        _currentIcon = RenderGroupIcon(null, 100);
+        _currentIcon = CreateCurrentIcon();
         if (_currentIcon == IntPtr.Zero || !AddTrayIcon())
         {
             RemoveWindowSubclass(_windowHandle, _subclassProcedure, SubclassId);
@@ -117,6 +119,20 @@ internal sealed class TrayIconService : IDisposable
         }
     }
 
+    public void SetAppearance(string? appearance)
+    {
+        if (_disposed) return;
+        _appearance = TrayIconAppearance.Normalize(appearance);
+        RefreshSystemAppearance();
+    }
+
+    private void RefreshSystemAppearance()
+    {
+        if (_disposed) return;
+        _systemUsesLightTheme = TrayIconAppearance.ReadSystemUsesLightTheme();
+        UpdateSelectedGroup(_selectedGroupName, _selectedGroupVolume, _selectedAccentColor);
+    }
+
     public void UpdateSelectedGroup(string? groupName, int volumePercent, string? accentColor = null)
     {
         _selectedGroupName = string.IsNullOrWhiteSpace(groupName) ? null : groupName.Trim();
@@ -127,7 +143,7 @@ internal sealed class TrayIconService : IDisposable
             return;
         }
 
-        var replacementIcon = RenderGroupIcon(_selectedGroupName, _selectedGroupVolume);
+        var replacementIcon = CreateCurrentIcon();
         if (replacementIcon == IntPtr.Zero)
         {
             return;
@@ -241,12 +257,12 @@ internal sealed class TrayIconService : IDisposable
             return "No group selected";
         }
 
-        var suffix = $" — {volumePercent}%";
+        var suffix = $" â€” {volumePercent}%";
         var name = groupName.Trim();
         var maxNameLength = 127 - suffix.Length;
         if (name.Length > maxNameLength)
         {
-            var ellipsis = "…";
+            var ellipsis = "â€¦";
             var nameLength = maxNameLength - ellipsis.Length;
             if (char.IsHighSurrogate(name[nameLength - 1]))
             {
@@ -259,22 +275,32 @@ internal sealed class TrayIconService : IDisposable
         return name + suffix;
     }
 
-    private IntPtr RenderGroupIcon(string? groupName, int volumePercent)
+    private IntPtr CreateCurrentIcon()
     {
-        // The notification area belongs to the taskbar, which may be on a
-        // different-DPI monitor from Disturn's visible (or hidden) window.
+        if (!string.IsNullOrWhiteSpace(_selectedGroupName))
+            return RenderGroupIcon(_selectedGroupVolume);
+
+        // Load the ICO's appropriate size directly, without the percentage color
+        // or GDI+ pipeline. No LR_SHARED: this handle belongs to our tray lifecycle.
+        var size = GetTrayIconSize();
+        return LoadTrayImage(IntPtr.Zero, ResolveBrandingAsset("Disturn.ico"),
+            1 /* IMAGE_ICON */, size, size, 0x10 /* LR_LOADFROMFILE */);
+    }
+
+    private int GetTrayIconSize()
+    {
+        // The taskbar can be on a different-DPI monitor from the main window.
         var taskbarWindow = FindWindow("Shell_TrayWnd", null);
         var dpi = GetDpiForWindow(taskbarWindow != IntPtr.Zero ? taskbarWindow : _windowHandle);
-        if (dpi == 0)
-        {
-            dpi = 96;
-        }
-
-        // Use the largest square that fits the system's small-icon dimensions.
-        // The background fills this canvas edge to edge; no transparent inset.
-        var size = Math.Max(16, Math.Min(
+        if (dpi == 0) dpi = 96;
+        return Math.Max(16, Math.Min(
             GetSystemMetricsForDpi(SmallIconWidthMetric, dpi),
             GetSystemMetricsForDpi(SmallIconHeightMetric, dpi)));
+    }
+
+    private IntPtr RenderGroupIcon(int volumePercent)
+    {
+        var size = GetTrayIconSize();
         var width = size;
         var height = size;
         var bitmapStatus = GdipCreateBitmapFromScan0(width, height, 0, PixelFormat32BppArgb, IntPtr.Zero, out var bitmap);
@@ -302,14 +328,14 @@ internal sealed class TrayIconService : IDisposable
                 GdipStringFormatNoWrap | GdipStringFormatNoClip | GdipStringFormatNoFitBlackBox));
             CheckGdiPlus(GdipSetStringFormatAlign(stringFormat, 0));
             CheckGdiPlus(GdipSetStringFormatLineAlign(stringFormat, 0));
-            CheckGdiPlus(GdipCreateSolidFill(0xFFFFFFFF, out brush));
+            CheckGdiPlus(GdipCreateSolidFill(TrayIconAppearance.TextArgb(_appearance, _systemUsesLightTheme), out brush));
 
             var percentText = Math.Clamp(volumePercent, 0, 100).ToString();
             // Fit against the original area so spacing cannot shrink the font.
             var originalNumberHeight = height - bottomMargin -
                 Math.Max(2, (int)MathF.Round(height * 2f / 16f)) - separation;
             using var number = FitIconLine(percentText, fontFamily, GdipFontStyleRegular,
-                stringFormat, brush, width, originalNumberHeight, truncate: false);
+                stringFormat, brush, width, originalNumberHeight);
             var requiredGap = Math.Max(2, (int)MathF.Round(height * 2f / 16f));
             var numberY = (originalNumberHeight - number.Height) / 2;
             // A tall glyph may need the pill's bottom margin to fit the gap.
@@ -465,96 +491,14 @@ internal sealed class TrayIconService : IDisposable
         public IntPtr MaskBitmap, ColorBitmap;
     }
 
-    private static void DrawIconLine(
-        IntPtr graphics, string text, IntPtr family, int style, IntPtr format, IntPtr brush,
-        int width, int rowTop, int rowHeight, bool truncate)
-    {
-        using var line = FitIconLine(text, family, style, format, brush, width, rowHeight, truncate);
-        if (line.Width == 0 || line.Height == 0) return;
-
-        var pixels = line;
-
-        // Crop unused font bearings, then copy at native resolution. Font size
-        // is chosen from all visible alpha pixels, including accents/descenders.
-        var x = (width - pixels.Width) / 2;
-        var y = rowTop + (rowHeight - pixels.Height) / 2;
-        CheckGdiPlus(GdipDrawImageRectRectI(graphics, pixels.Bitmap,
-            x, y, pixels.Width, pixels.Height, pixels.Left, pixels.Top, pixels.Width, pixels.Height,
-            GdipUnitPixel, IntPtr.Zero, IntPtr.Zero, IntPtr.Zero));
-    }
-
     private static GlyphRaster FitIconLine(
         string text, IntPtr family, int style, IntPtr format, IntPtr brush,
-        int maxWidth, int maxHeight, bool truncate)
+        int maxWidth, int maxHeight)
     {
-        // Bound scratch allocations even for exceptionally long saved names.
-        if (truncate)
-        {
-            var elements = StringInfo.GetTextElementEnumerator(text);
-            var length = 0;
-            while (elements.MoveNext())
-            {
-                var nextLength = elements.ElementIndex + elements.GetTextElement().Length;
-                if (nextLength > 128) break;
-                length = nextLength;
-            }
-            if (length < text.Length) text = text[..length] + "\u2026";
-
-            // Keep short labels whole when a modest font reduction suffices.
-            // Do not shrink long labels indefinitely just to avoid an ellipsis.
-            for (var size = maxHeight * 2; size >= Math.Max(3, maxHeight); size--)
-            {
-                var complete = RasterizeGlyphs(text, family, size, style, format, brush);
-                if (complete.Width <= maxWidth && complete.Height <= maxHeight) return complete;
-                complete.Dispose();
-            }
-        }
-
         for (var size = maxHeight * 2; size >= 3; size--)
         {
             var raster = RasterizeGlyphs(text, family, size, style, format, brush);
-            if (raster.Height <= maxHeight)
-            {
-                if (raster.Width <= maxWidth) return raster;
-                if (truncate)
-                {
-                    raster.Dispose();
-                    // Find the longest whole-text-element prefix that fits at
-                    // this readable font size. Never cut a surrogate/combining sequence.
-                    var starts = StringInfo.ParseCombiningCharacters(text);
-                    var low = 0;
-                    var high = starts.Length - 1;
-                    GlyphRaster? best = null;
-                    try
-                    {
-                        while (low <= high)
-                        {
-                            var count = (low + high) / 2;
-                            var candidate = RasterizeGlyphs(text[..starts[count]] + "\u2026",
-                                family, size, style, format, brush);
-                            if (candidate.Width <= maxWidth && candidate.Height <= maxHeight)
-                            {
-                                best?.Dispose();
-                                best = candidate;
-                                low = count + 1;
-                            }
-                            else
-                            {
-                                candidate.Dispose();
-                                high = count - 1;
-                            }
-                        }
-                        if (best is not null)
-                        {
-                            var result = best;
-                            best = null;
-                            return result;
-                        }
-                    }
-                    finally { best?.Dispose(); }
-                    continue;
-                }
-            }
+            if (raster.Height <= maxHeight && raster.Width <= maxWidth) return raster;
             raster.Dispose();
         }
         return RasterizeGlyphs(string.Empty, family, 3, style, format, brush);
@@ -607,7 +551,7 @@ internal sealed class TrayIconService : IDisposable
             finally { GdipBitmapUnlockBits(bitmap, ref data); }
 
             var result = new GlyphRaster(bitmap, left, top,
-                right < 0 ? 0 : right - left + 1, bottom < 0 ? 0 : bottom - top + 1, text, size);
+                right < 0 ? 0 : right - left + 1, bottom < 0 ? 0 : bottom - top + 1);
             bitmap = IntPtr.Zero; // Ownership passes to the returned raster.
             return result;
         }
@@ -626,13 +570,10 @@ internal sealed class TrayIconService : IDisposable
         public int Top { get; }
         public int Width { get; }
         public int Height { get; }
-        public string Text { get; }
-        public int FontSize { get; }
 
-        public GlyphRaster(IntPtr bitmap, int left, int top, int width, int height, string text, int fontSize)
+        public GlyphRaster(IntPtr bitmap, int left, int top, int width, int height)
         {
             Bitmap = bitmap; Left = left; Top = top; Width = width; Height = height;
-            Text = text; FontSize = fontSize;
         }
 
         public void Dispose()
@@ -666,12 +607,13 @@ internal sealed class TrayIconService : IDisposable
         if (message == _taskbarCreatedMessage)
         {
             AddTrayIcon();
+            _dispatcher.TryEnqueue(RefreshSystemAppearance);
             return IntPtr.Zero;
         }
 
-        if (message == WmDpiChanged || message == WmDisplayChange || message == WmSettingChange)
+        if (message == WmDpiChanged || message == WmDisplayChange || message == WmSettingChange || message == WmThemeChanged)
         {
-            _dispatcher.TryEnqueue(() => UpdateSelectedGroup(_selectedGroupName, _selectedGroupVolume, _selectedAccentColor));
+            _dispatcher.TryEnqueue(RefreshSystemAppearance);
         }
 
         if (message == TrayCallbackMessage)
@@ -904,6 +846,8 @@ internal sealed class TrayIconService : IDisposable
     [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool Shell_NotifyIcon(uint message, ref NotifyIconData data);
 
+    [DllImport("user32.dll", EntryPoint = "LoadImageW", CharSet = CharSet.Unicode, SetLastError = true)]
+    private static extern IntPtr LoadTrayImage(IntPtr instance, string path, uint type, int width, int height, uint flags);
     [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
     private static extern IntPtr CreatePopupMenu();
 
@@ -1065,3 +1009,5 @@ internal sealed class TrayIconService : IDisposable
     [DllImport("gdiplus.dll", ExactSpelling = true)]
     private static extern int GdipDeleteBrush(IntPtr brush);
 }
+
+
