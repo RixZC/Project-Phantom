@@ -9,6 +9,7 @@
 #endif
 
 [Setup]
+LicenseFile=..\LICENSE
 AppId={{AD661449-F6C0-44D0-BD80-4199B142600A}
 AppName=Disturn
 AppVersion={#AppVersion}
@@ -49,7 +50,7 @@ Name: "desktopicon"; Description: "Create a &desktop shortcut"; Flags: unchecked
 [Files]
 ; Preserve all WinUI/native DLLs, PRI/WinMD files, locales, and resources.
 Source: "{#PublishDir}\*"; DestDir: "{app}"; Excludes: "*.pdb,*.ilk,*.ipdb,*.iobj,*.exp,*.lib"; Flags: ignoreversion recursesubdirs createallsubdirs
-Source: "..\LICENSE.txt"; DestDir: "{app}"; Flags: ignoreversion
+; LICENSE, LICENSE.txt, THIRD-PARTY-NOTICES.txt and ThirdPartyLicenses are in the published payload.
 
 [Icons]
 Name: "{userprograms}\Disturn"; Filename: "{app}\Disturn.exe"; WorkingDir: "{app}"; IconFilename: "{app}\Assets\Disturn.ico"
@@ -116,3 +117,4 @@ end;
 { No Registry, InstallDelete, or UninstallDelete sections. StartupService still
   owns registration during normal operation; uninstall removes only its own Run
   command. Saved settings, migration backups, and MSIX startup remain untouched. }
+

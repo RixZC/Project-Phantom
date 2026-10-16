@@ -1,4 +1,4 @@
-<Project Sdk="Microsoft.NET.Sdk">
+﻿<Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
     <TargetFramework>net8.0-windows10.0.19041.0</TargetFramework>
@@ -27,6 +27,13 @@
     <Content Update="Assets\**\*" CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>
 
+  <!-- Include licenses in both folder publications and packaged development builds. -->
+  <ItemGroup>
+    <Content Include="..\LICENSE" Link="LICENSE" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="..\LICENSE.txt" Link="LICENSE.txt" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="..\THIRD-PARTY-NOTICES.txt" Link="THIRD-PARTY-NOTICES.txt" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="..\ThirdPartyLicenses\**\*" Link="ThirdPartyLicenses\%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
   <ItemGroup>
     <Manifest Include="$(ApplicationManifest)" />
   </ItemGroup>
@@ -64,3 +71,4 @@
     <BuiltInComInteropSupport>true</BuiltInComInteropSupport>
   </PropertyGroup>
 </Project>
+

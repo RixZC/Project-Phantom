@@ -13,11 +13,21 @@ try {
     if ($LASTEXITCODE -ne 0) { throw "Publish failed (exit $LASTEXITCODE)." }
 
     $required = @('Disturn.exe', 'Disturn.dll', 'Disturn.deps.json', 'Disturn.runtimeconfig.json',
-        'Disturn.pri', 'coreclr.dll', 'hostfxr.dll', 'hostpolicy.dll',
+        'LICENSE', 'LICENSE.txt', 'THIRD-PARTY-NOTICES.txt', 'ThirdPartyLicenses/manifest.json', 'Disturn.pri', 'coreclr.dll', 'hostfxr.dll', 'hostpolicy.dll',
         'Microsoft.ui.xaml.dll', 'Microsoft.WindowsAppRuntime.dll', 'NAudio.Wasapi.dll', 'Assets/Disturn.ico')
     foreach ($file in $required) {
         if (-not (Test-Path -LiteralPath (Join-Path $publishDir $file) -PathType Leaf)) {
             throw "Publish output is incomplete: $file"
+        }
+    }
+    foreach ($relative in @('LICENSE', 'LICENSE.txt', 'THIRD-PARTY-NOTICES.txt') + @(
+        Get-ChildItem -LiteralPath (Join-Path $repoRoot 'ThirdPartyLicenses') -Recurse -File |
+            ForEach-Object { $_.FullName.Substring($repoRoot.Length + 1) })) {
+        $source = Join-Path $repoRoot $relative
+        $published = Join-Path $publishDir $relative
+        if (-not (Test-Path -LiteralPath $published -PathType Leaf) -or
+            (Get-FileHash -LiteralPath $source).Hash -ne (Get-FileHash -LiteralPath $published).Hash) {
+            throw "Published license/notice is missing or changed: $relative"
         }
     }
     $runtime = Get-Content -LiteralPath (Join-Path $publishDir 'Disturn.runtimeconfig.json') -Raw | ConvertFrom-Json
@@ -56,3 +66,4 @@ try {
     Get-Item -LiteralPath (Join-Path $repoRoot 'artifacts/installer/Disturn-1.0.0-Setup-x64.exe') | Select-Object FullName, Length
 }
 finally { Pop-Location }
+

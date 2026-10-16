@@ -102,7 +102,10 @@ The profile ships .NET 8 and Windows App SDK runtime files alongside Disturn.
 The build helper checks critical runtime/resource files and explicit JSON reflection
 and built-in COM switches. It preserves localized folders, WinMD/PRI files, native
 DLLs, and all assets; only debug/link artifacts are excluded from the installer.
-The repository's MIT LICENSE.txt is included in the installation directory.
+The standard MIT LICENSE is displayed through LicenseFile. LICENSE and the
+compatibility LICENSE.txt, THIRD-PARTY-NOTICES.txt, and the full ThirdPartyLicenses
+tree are copied from the published output. The build helper verifies every notice
+against its repository copy before compiling. No separate proprietary EULA is added.
 
 On the current publish, dumpbin /DEPENDENTS (including delay imports) across
 shipped EXE/DLL files found no VCRUNTIME140/MSVCP140 redistributable imports.
@@ -127,8 +130,9 @@ Before public distribution:
    settings return. Do not uninstall the MSIX as part of this test.
 8. Arrange Authenticode signing of app/installer/uninstaller before public release;
    these scripts currently produce unsigned files (SmartScreen warnings expected).
-9. Resolve the existing placeholder copyright in LICENSE.txt and review third-party
-   redistribution notices. This packaging stage does not invent license attribution.
+9. Review the unresolved Microsoft binary redistribution/downstream-agreement
+   requirements documented in THIRD-PARTY-NOTICES.txt. The MIT copyright is now
+   corrected; including notices alone is not proof that all obligations are met.
 
 ## Initial Stage 3 verification
 
@@ -174,3 +178,23 @@ foreign startup entries, and preservation of saved settings/backups. The tests
 exercise the shared cleanup directly, not the entire uninstall lifecycle.
 
 
+
+
+## MIT release licensing
+
+The repository LICENSE is the unmodified standard MIT license with
+Copyright (c) 2026 RixZC. LICENSE.txt is retained as an identical compatibility
+copy, with its placeholder corrected. Setup uses LicenseFile=..\LICENSE.
+The actual wizard license text was read back and matched LICENSE; the wizard
+was then canceled before installation.
+
+Published folders include LICENSE, LICENSE.txt, THIRD-PARTY-NOTICES.txt and
+ThirdPartyLicenses/. The collected 28 upstream documents retain their original
+bytes; manifest.json supplies versions/provenance and SHA-256s. The build helper
+rejects missing or modified copies of any legal document before compilation.
+
+Disturn's MIT grant does not relicense its bundled Microsoft binary dependencies.
+The Windows App SDK/Windows SDK terms contain downstream-agreement obligations,
+and targeting-pack redistribution-list coverage has not been conclusively
+verified. Those release-review items are recorded in THIRD-PARTY-NOTICES.txt.
+No separate proprietary EULA or custom restriction was added to the MIT license.

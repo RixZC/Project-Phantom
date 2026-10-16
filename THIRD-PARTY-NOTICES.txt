@@ -1,0 +1,123 @@
+﻿DISTURN 1.0.0 - THIRD-PARTY NOTICES
+
+Disturn's own code is licensed under the MIT License in LICENSE.
+Third-party components retain their own licenses. Disturn's MIT License does
+not relicense Microsoft binaries, the installer engine, or other dependencies.
+The original license and notice documents below accompany this distribution
+under ThirdPartyLicenses/. They are reproduced without altering their terms.
+ThirdPartyLicenses/manifest.json records component versions and file SHA-256s.
+
+1. NAudio.Core 2.2.1 and NAudio.Wasapi 2.2.1
+   Author: Mark Heath. NuGet copyright: (c) Mark Heath 2023.
+   Tagged source license: Copyright 2020 Mark Heath.
+   License: MIT. Retain the copyright and permission notice with distributions.
+   Full text: ThirdPartyLicenses/NAudio-2.2.1/license.txt
+   Source: https://github.com/naudio/NAudio/tree/v2.2.1
+
+2. Microsoft .NET runtime 8.0.31, self-contained win-x64
+   Copyright (c) .NET Foundation and Contributors. All rights reserved.
+   License: MIT for .NET code, with third-party components under additional terms.
+   Full original LICENSE.TXT and THIRD-PARTY-NOTICES.TXT:
+   ThirdPartyLicenses/dotnet-runtime-8.0.31/
+   The third-party file supplies additional component copyrights and licenses;
+   the entire runtime must not be described as exclusively MIT.
+
+3. System.Numerics.Tensors 9.0.0
+   Copyright (c) .NET Foundation and Contributors. All rights reserved.
+   License: MIT, plus the original accompanying third-party notices.
+   Documents: ThirdPartyLicenses/system.numerics.tensors/9.0.0/
+
+4. Windows App SDK binary distribution
+   Copyright (c) Microsoft Corporation. All rights reserved.
+   The Windows App SDK source repository uses MIT, but these restored binary
+   packages carry MICROSOFT SOFTWARE LICENSE TERMS, not a blanket MIT grant:
+
+   Microsoft.WindowsAppSDK                       2.5.1
+   Microsoft.WindowsAppSDK.Runtime               2.5.1
+   Microsoft.WindowsAppSDK.Base                  2.0.4
+   Microsoft.WindowsAppSDK.Foundation            2.3.12
+   Microsoft.WindowsAppSDK.WinUI                 2.3.9
+   Microsoft.WindowsAppSDK.DWrite                2.1.0
+   Microsoft.WindowsAppSDK.InteractiveExperiences 2.1.9
+   Microsoft.WindowsAppSDK.AI                     2.5.5
+   Microsoft.WindowsAppSDK.ML                     2.1.94
+   Microsoft.WindowsAppSDK.Search                 2.5.5
+   Microsoft.WindowsAppSDK.Widgets                2.0.5
+
+   Original package license.txt files and all supplied NOTICE.txt files are
+   retained under ThirdPartyLicenses/<lowercase-package-id>/<version>/.
+   The main NOTICE includes third-party MIT, Apache, BSD, Intel and other terms;
+   do not replace it with a Microsoft-only attribution. WinUI's separate root
+   and tools notices are retained too. Some tools/notices are included
+   conservatively even when a tool itself is not part of the installed payload.
+
+   Section 3(a)(i) of the binary package license permits redistribution of files
+   binplaced by WindowsAppSDK NuGet packages, including self-contained output.
+   Section 3(b) imposes distribution requirements, including downstream terms,
+   primary application functionality, and indemnification. Trademark, export,
+   and notice-retention restrictions also apply. Refer to the full terms.
+   Official versioned terms:
+   https://www.nuget.org/packages/Microsoft.WindowsAppSDK/2.5.1/License
+
+5. Microsoft.Windows.AI.MachineLearning 2.1.74 / Windows ML runtime
+   Copyright (c) Microsoft Corporation. All rights reserved.
+   License: Microsoft Windows ML Runtime software license terms, with included
+   third-party terms. This transitive dependency ships even though Disturn does
+   not implement ML features. Its original license.txt and ThirdPartyNotices.txt
+   are retained at ThirdPartyLicenses/microsoft.windows.ai.machinelearning/2.1.74/.
+   Third-party execution-provider licenses can apply if providers are used or
+   distributed. This release does not separately download or add providers.
+
+6. Microsoft.Web.WebView2 SDK 1.0.3719.77
+   Copyright (C) Microsoft Corporation. All rights reserved.
+   The restored SDK LICENSE.txt is a BSD-style three-clause license: retain
+   copyright, conditions, and disclaimer in binary redistribution materials;
+   do not use contributor names to imply endorsement.
+   Full LICENSE.txt and NOTICE.txt:
+   ThirdPartyLicenses/microsoft.web.webview2/1.0.3719.77/
+   Covers the SDK loader/projection files, including the generated
+   Microsoft.Web.WebView2.Core.Projection entry in Disturn.deps.json.
+   No WebView2 browser runtime installer is bundled. This SDK license must not
+   be assumed to license a separately downloaded browser runtime.
+
+7. Microsoft.Windows.SDK.NET.Ref 10.0.19041.57 / C#/WinRT projections
+   Copyright (c) Microsoft Corporation. All rights reserved.
+   The targeting pack supplies Microsoft.Windows.SDK.NET.dll and WinRT.Runtime.dll.
+   Its nuspec points to the Windows SDK license at https://aka.ms/WinSDKLicenseURL.
+   The linked original RTF is retained in
+   ThirdPartyLicenses/Windows-SDK-NET-10.0.19041.57/sdk_license.rtf.
+   The upstream C#/WinRT project's MIT source license is additionally preserved
+   in ThirdPartyLicenses/CsWinRT/LICENSE. That source license is not a substitute
+   for verifying the exact shipped targeting-pack binaries' terms.
+
+8. Inno Setup 7.1.0 installer/uninstaller engine
+   Copyright (C) 1997-2026 Jordan Russell. All rights reserved.
+   Portions Copyright (C) 2000-2026 Martijn Laan. All rights reserved.
+   Separate Inno Setup License, not MIT. Original full terms:
+   ThirdPartyLicenses/Inno-Setup-7.1.0/license.txt
+   Source: https://jrsoftware.org/
+   Built-in copyrights and website credits in the engine are not removed.
+
+BUILD-ONLY REFERENCES
+Microsoft.Windows.SDK.BuildTools 10.0.28000.2705 and
+Microsoft.Windows.SDK.BuildTools.MSIX 1.7.251221100 are used for building/packaging;
+their SDK executables and installers are not copied into Disturn's payload.
+They remain subject to their SDK licenses on the developer machine. This notice
+does not grant permission to redistribute arbitrary Windows SDK tools.
+
+RELEASE REVIEW ITEMS - NOT A CLAIM OF COMPLETE LEGAL CLEARANCE
+The unmodified Windows App SDK and Windows SDK binary terms require downstream
+agreement/protection obligations. Supplying notices and displaying Disturn's MIT
+license alone has not been verified to satisfy those obligations. No proprietary
+EULA or additional restrictions have been added to Disturn's MIT License.
+Confirm the required treatment of those binary dependencies before public release.
+The precise Windows SDK redistribution-list coverage for the targeting-pack
+binaries also remains to be confirmed; the linked SDK terms are included, but the
+availability of an MIT source repository is not treated as proof of binary rights.
+Microsoft's original NOTICE files preserve third-party source-offer addresses
+and license exceptions; no independent audit of each underlying native component
+or source-availability obligation has been completed.
+
+When dependencies, runtime packs, or compiler versions change, review this
+inventory and refresh original license/notice files rather than editing their
+terms. No existing third-party notices should be deleted or replaced.

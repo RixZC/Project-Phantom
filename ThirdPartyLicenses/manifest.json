@@ -1,0 +1,170 @@
+﻿[
+    {
+        "Component":  "Microsoft.Web.WebView2/1.0.3719.77",
+        "File":  "ThirdPartyLicenses/microsoft.web.webview2/1.0.3719.77/LICENSE.txt",
+        "PackageFile":  "LICENSE.txt",
+        "SHA256":  "0AF8F1B807512AAE39C2AC1AA4D0CAE65CABECB6FD554B8439A5162A0D6ECA55"
+    },
+    {
+        "Component":  "Microsoft.Web.WebView2/1.0.3719.77",
+        "File":  "ThirdPartyLicenses/microsoft.web.webview2/1.0.3719.77/NOTICE.txt",
+        "PackageFile":  "NOTICE.txt",
+        "SHA256":  "106423785C5B7EBA0A8E61D1837F2132E9C828E20AD530F565D981C1DF60DD90"
+    },
+    {
+        "Component":  "Microsoft.Windows.AI.MachineLearning/2.1.74",
+        "File":  "ThirdPartyLicenses/microsoft.windows.ai.machinelearning/2.1.74/license.txt",
+        "PackageFile":  "license.txt",
+        "SHA256":  "66395F8CB219087FAE2BD025010BD9076B736C14F03B48F20295471C0C376814"
+    },
+    {
+        "Component":  "Microsoft.Windows.AI.MachineLearning/2.1.74",
+        "File":  "ThirdPartyLicenses/microsoft.windows.ai.machinelearning/2.1.74/ThirdPartyNotices.txt",
+        "PackageFile":  "ThirdPartyNotices.txt",
+        "SHA256":  "FB0AF774B4D7CFFC5B9D046F2AAEADE2F37DF2F80ABF8033C95DFFFCC77A8866"
+    },
+    {
+        "Component":  "Microsoft.WindowsAppSDK/2.5.1",
+        "File":  "ThirdPartyLicenses/microsoft.windowsappsdk/2.5.1/license.txt",
+        "PackageFile":  "license.txt",
+        "SHA256":  "5B11E6347756E40FE0274BC08C97F89201B94F0D50181A09A00F1F4740840501"
+    },
+    {
+        "Component":  "Microsoft.WindowsAppSDK/2.5.1",
+        "File":  "ThirdPartyLicenses/microsoft.windowsappsdk/2.5.1/NOTICE.txt",
+        "PackageFile":  "NOTICE.txt",
+        "SHA256":  "572B43D41DEA717DAE7DC5DE69ACB20A74DF025E8F5A3C0AA6F7BCA02615E23C"
+    },
+    {
+        "Component":  "Microsoft.WindowsAppSDK.AI/2.5.5",
+        "File":  "ThirdPartyLicenses/microsoft.windowsappsdk.ai/2.5.5/license.txt",
+        "PackageFile":  "license.txt",
+        "SHA256":  "5B11E6347756E40FE0274BC08C97F89201B94F0D50181A09A00F1F4740840501"
+    },
+    {
+        "Component":  "Microsoft.WindowsAppSDK.Base/2.0.4",
+        "File":  "ThirdPartyLicenses/microsoft.windowsappsdk.base/2.0.4/license.txt",
+        "PackageFile":  "license.txt",
+        "SHA256":  "5B11E6347756E40FE0274BC08C97F89201B94F0D50181A09A00F1F4740840501"
+    },
+    {
+        "Component":  "Microsoft.WindowsAppSDK.Base/2.0.4",
+        "File":  "ThirdPartyLicenses/microsoft.windowsappsdk.base/2.0.4/NOTICE.txt",
+        "PackageFile":  "NOTICE.txt",
+        "SHA256":  "572B43D41DEA717DAE7DC5DE69ACB20A74DF025E8F5A3C0AA6F7BCA02615E23C"
+    },
+    {
+        "Component":  "Microsoft.WindowsAppSDK.DWrite/2.1.0",
+        "File":  "ThirdPartyLicenses/microsoft.windowsappsdk.dwrite/2.1.0/license.txt",
+        "PackageFile":  "license.txt",
+        "SHA256":  "5B11E6347756E40FE0274BC08C97F89201B94F0D50181A09A00F1F4740840501"
+    },
+    {
+        "Component":  "Microsoft.WindowsAppSDK.Foundation/2.3.12",
+        "File":  "ThirdPartyLicenses/microsoft.windowsappsdk.foundation/2.3.12/license.txt",
+        "PackageFile":  "license.txt",
+        "SHA256":  "5B11E6347756E40FE0274BC08C97F89201B94F0D50181A09A00F1F4740840501"
+    },
+    {
+        "Component":  "Microsoft.WindowsAppSDK.InteractiveExperiences/2.1.9",
+        "File":  "ThirdPartyLicenses/microsoft.windowsappsdk.interactiveexperiences/2.1.9/license.txt",
+        "PackageFile":  "license.txt",
+        "SHA256":  "5B11E6347756E40FE0274BC08C97F89201B94F0D50181A09A00F1F4740840501"
+    },
+    {
+        "Component":  "Microsoft.WindowsAppSDK.ML/2.1.94",
+        "File":  "ThirdPartyLicenses/microsoft.windowsappsdk.ml/2.1.94/license.txt",
+        "PackageFile":  "license.txt",
+        "SHA256":  "656AAB74C15AA9F9964BCDCC993EB2755CBDB4822D5E0E3BC61D2E281897F758"
+    },
+    {
+        "Component":  "Microsoft.WindowsAppSDK.Runtime/2.5.1",
+        "File":  "ThirdPartyLicenses/microsoft.windowsappsdk.runtime/2.5.1/license.txt",
+        "PackageFile":  "license.txt",
+        "SHA256":  "5B11E6347756E40FE0274BC08C97F89201B94F0D50181A09A00F1F4740840501"
+    },
+    {
+        "Component":  "Microsoft.WindowsAppSDK.Runtime/2.5.1",
+        "File":  "ThirdPartyLicenses/microsoft.windowsappsdk.runtime/2.5.1/NOTICE.txt",
+        "PackageFile":  "NOTICE.txt",
+        "SHA256":  "572B43D41DEA717DAE7DC5DE69ACB20A74DF025E8F5A3C0AA6F7BCA02615E23C"
+    },
+    {
+        "Component":  "Microsoft.WindowsAppSDK.Search/2.5.5",
+        "File":  "ThirdPartyLicenses/microsoft.windowsappsdk.search/2.5.5/license.txt",
+        "PackageFile":  "license.txt",
+        "SHA256":  "5B11E6347756E40FE0274BC08C97F89201B94F0D50181A09A00F1F4740840501"
+    },
+    {
+        "Component":  "Microsoft.WindowsAppSDK.Widgets/2.0.5",
+        "File":  "ThirdPartyLicenses/microsoft.windowsappsdk.widgets/2.0.5/license.txt",
+        "PackageFile":  "license.txt",
+        "SHA256":  "5B11E6347756E40FE0274BC08C97F89201B94F0D50181A09A00F1F4740840501"
+    },
+    {
+        "Component":  "Microsoft.WindowsAppSDK.WinUI/2.3.9",
+        "File":  "ThirdPartyLicenses/microsoft.windowsappsdk.winui/2.3.9/license.txt",
+        "PackageFile":  "license.txt",
+        "SHA256":  "5B11E6347756E40FE0274BC08C97F89201B94F0D50181A09A00F1F4740840501"
+    },
+    {
+        "Component":  "Microsoft.WindowsAppSDK.WinUI/2.3.9",
+        "File":  "ThirdPartyLicenses/microsoft.windowsappsdk.winui/2.3.9/NOTICE.txt",
+        "PackageFile":  "NOTICE.txt",
+        "SHA256":  "E25393C0D340A1821827B093FA4DBBFCCCD8FEB7BF769E7FA773E3955CD5314B"
+    },
+    {
+        "Component":  "Microsoft.WindowsAppSDK.WinUI/2.3.9",
+        "File":  "ThirdPartyLicenses/microsoft.windowsappsdk.winui/2.3.9/tools/NOTICE.txt",
+        "PackageFile":  "tools/NOTICE.txt",
+        "SHA256":  "4A9321FD173EBF4E8BBC79130794D4C3FE233ACCCBF7DB8765E0ADDB8FBFB8CA"
+    },
+    {
+        "Component":  "System.Numerics.Tensors/9.0.0",
+        "File":  "ThirdPartyLicenses/system.numerics.tensors/9.0.0/LICENSE.TXT",
+        "PackageFile":  "LICENSE.TXT",
+        "SHA256":  "D7A68596AB69B06F51CA278A6545148E4269A9381C26D597C13DF5D88E08CF5B"
+    },
+    {
+        "Component":  "System.Numerics.Tensors/9.0.0",
+        "File":  "ThirdPartyLicenses/system.numerics.tensors/9.0.0/THIRD-PARTY-NOTICES.TXT",
+        "PackageFile":  "THIRD-PARTY-NOTICES.TXT",
+        "SHA256":  "40686C6447A7D5B5D3693068E4571B5F483D7ED335AEEE773EF662440DE4C5D5"
+    },
+    {
+        "Component":  "Microsoft.NETCore.App.Runtime.win-x64/8.0.31",
+        "File":  "ThirdPartyLicenses/dotnet-runtime-8.0.31/LICENSE.TXT",
+        "PackageFile":  "LICENSE.TXT",
+        "SHA256":  "D7A68596AB69B06F51CA278A6545148E4269A9381C26D597C13DF5D88E08CF5B"
+    },
+    {
+        "Component":  "Microsoft.NETCore.App.Runtime.win-x64/8.0.31",
+        "File":  "ThirdPartyLicenses/dotnet-runtime-8.0.31/THIRD-PARTY-NOTICES.TXT",
+        "PackageFile":  "THIRD-PARTY-NOTICES.TXT",
+        "SHA256":  "B60B2912DA28EAA6518593C9E2EFB5334EE062D3C42E80D8FDFA806B3DC52977"
+    },
+    {
+        "Component":  "Inno Setup/7.1.0",
+        "File":  "ThirdPartyLicenses/Inno-Setup-7.1.0/license.txt",
+        "PackageFile":  "license.txt",
+        "SHA256":  "2E5346868C2A18434489824E11D65C3031620F792FEFC415D05F19CD441ABF5C"
+    },
+    {
+        "Component":  "NAudio/2.2.1 (tagged source license)",
+        "File":  "ThirdPartyLicenses/NAudio-2.2.1/license.txt",
+        "PackageFile":  "upstream source license",
+        "SHA256":  "303E01786B271EB464B3F43D18A375F2F17D37BC708A37C2FDF45B289FB5BFAA"
+    },
+    {
+        "Component":  "CsWinRT (upstream source license; targeting pack provenance noted separately)",
+        "File":  "ThirdPartyLicenses/CsWinRT/LICENSE",
+        "PackageFile":  "upstream source license",
+        "SHA256":  "9906940F61B1F0B533FA7D99BAF55178B2808FBE113EA51DFBFAD8572CCD5F2B"
+    },
+    {
+        "Component":  "Microsoft.Windows.SDK.NET.Ref/10.0.19041.57",
+        "File":  "ThirdPartyLicenses/Windows-SDK-NET-10.0.19041.57/sdk_license.rtf",
+        "PackageFile":  "https://aka.ms/WinSDKLicenseURL (licenseUrl from restored nuspec)",
+        "SHA256":  "DD07EB178E00C6BBA4148457FC00FF77CD4887EB521D504186FE59C9EC8BBE62"
+    }
+]
