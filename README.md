@@ -41,4 +41,4 @@ Copyright © 2026 RixZC.
 
 <img width="1426" height="746" alt="{EF361F15-6B03-4549-9320-FDA946F757E4}" src="https://github.com/user-attachments/assets/632d8778-2975-48ad-8691-6dc11350ea27" />
 
-<img width="1920" height="48" alt="{F3939890-4EC2-4BF4-91EB-15A22E6AC3CD}" src="https://github.com/user-attachments/assets/90df0783-4c98-46c9-b465-b3efe74a8db7" />
+<img width="262" height="48" alt="{20AA5DDE-526F-4FBA-A9BF-1D81C1B3B92D}" src="https://github.com/user-attachments/assets/e24ae817-d2b0-4bf7-b60e-8fb6fd7284c2" />
