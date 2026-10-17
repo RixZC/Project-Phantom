@@ -432,7 +432,7 @@
                            TextAlignment="Center" Foreground="{ThemeResource TextFillColorPrimaryBrush}" />
                 <TextBlock Text="Made with &#x2764;&#xFE0F; by RixZC" FontSize="12"
                            TextAlignment="Center" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-                <TextBlock Text="V1.0.0" FontSize="11"
+                <TextBlock x:Name="AppVersionText" FontSize="11"
                            TextAlignment="Center" Foreground="{ThemeResource TextFillColorTertiaryBrush}" />
             </StackPanel>
         </StackPanel>

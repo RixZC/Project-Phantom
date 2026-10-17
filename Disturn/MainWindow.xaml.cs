@@ -10,6 +10,7 @@ using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.IO;
 using System.Linq;
+using System.Reflection;
 using System.Threading.Tasks;
 
 // Hello
@@ -118,6 +119,9 @@ namespace Disturn
         public MainWindow()
         {
             InitializeComponent();
+            var version = typeof(MainWindow).Assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()
+                ?.InformationalVersion ?? typeof(MainWindow).Assembly.GetName().Version?.ToString(3);
+            AppVersionText.Text = $"V{version ?? "Unknown"}";
             Closed += MainWindow_Closed;
 
             var windowHandle = WinRT.Interop.WindowNative.GetWindowHandle(this);

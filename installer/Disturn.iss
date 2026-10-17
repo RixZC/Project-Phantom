@@ -2,7 +2,12 @@
 #if VER < EncodeVer(6, 6, 0)
   #error Disturn requires Inno Setup 6.6 or later for native dark wizard styling.
 #endif
-#define AppVersion "1.0.0"
+#ifndef AppVersion
+  #error Build with Build-Installer.ps1 to supply the project version.
+#endif
+#ifndef AppFileVersion
+  #error Build with Build-Installer.ps1 to supply the numeric Windows file version.
+#endif
 #define PublishDir AddBackslash(SourcePath) + "..\artifacts\publish\Disturn-win-x64"
 #if !FileExists(PublishDir + "\Disturn.exe")
   #error Publish Disturn with the Unpackaged-win-x64 profile before compiling.
@@ -15,7 +20,10 @@ AppName=Disturn
 AppVersion={#AppVersion}
 AppVerName=Disturn {#AppVersion}
 AppPublisher=RixZC
-VersionInfoVersion=1.0.0.0
+VersionInfoVersion={#AppFileVersion}
+VersionInfoTextVersion={#AppFileVersion}
+VersionInfoProductVersion={#AppFileVersion}
+VersionInfoProductTextVersion={#AppVersion}
 VersionInfoProductName=Disturn
 VersionInfoDescription=Disturn Setup
 DefaultDirName={localappdata}\Programs\Disturn

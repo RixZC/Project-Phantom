@@ -9,6 +9,21 @@ $publishDir = Join-Path $repoRoot 'artifacts/publish/Disturn-win-x64'
 
 Push-Location $repoRoot
 try {
+    # Ask MSBuild for evaluated values, including SDK-derived numeric file version.
+    # GetAssemblyVersion computes metadata without building or modifying source files.
+    $versionOutput = & dotnet msbuild 'Disturn/Disturn.csproj' -nologo -verbosity:quiet `
+        -p:Configuration=Release -p:Platform=x64 -p:RuntimeIdentifier=win-x64 `
+        -p:PublishProfile=Unpackaged-win-x64 -target:GetAssemblyVersion '-getProperty:Version,FileVersion'
+    if ($LASTEXITCODE -ne 0) { throw "Project version query failed (exit $LASTEXITCODE)." }
+    $versionProperties = (($versionOutput -join [Environment]::NewLine) | ConvertFrom-Json).Properties
+    $appVersion = [string] $versionProperties.Version
+    $appFileVersion = [string] $versionProperties.FileVersion
+    if ($appVersion -notmatch '^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$' -or
+        $appFileVersion -notmatch '^\d+\.\d+\.\d+\.\d+$') {
+        throw 'Expected a major.minor.patch project Version and a four-part numeric FileVersion.'
+    }
+    Write-Host "Disturn version: $appVersion (Windows file version $appFileVersion)"
+
     & dotnet publish 'Disturn/Disturn.csproj' -c Release -r win-x64 -p:Platform=x64 -p:PublishProfile=Unpackaged-win-x64
     if ($LASTEXITCODE -ne 0) { throw "Publish failed (exit $LASTEXITCODE)." }
 
@@ -18,6 +33,12 @@ try {
     foreach ($file in $required) {
         if (-not (Test-Path -LiteralPath (Join-Path $publishDir $file) -PathType Leaf)) {
             throw "Publish output is incomplete: $file"
+        }
+    }
+    foreach ($binary in @('Disturn.exe', 'Disturn.dll')) {
+        $metadata = [System.Diagnostics.FileVersionInfo]::GetVersionInfo((Join-Path $publishDir $binary))
+        if ($metadata.FileVersion -ne $appFileVersion -or $metadata.ProductVersion -ne $appVersion) {
+            throw "Published $binary version does not match the project. Expected $appVersion / $appFileVersion."
         }
     }
     foreach ($relative in @('LICENSE', 'LICENSE.txt', 'THIRD-PARTY-NOTICES.txt') + @(
@@ -61,9 +82,20 @@ try {
         throw 'Inno Setup ISCC.exe was not found. Install Inno Setup 6.6+ or supply -IsccPath. Publish validation succeeded; no installer was compiled.'
     }
     Write-Host "Inno Setup compiler: $IsccPath"
-    & $IsccPath (Join-Path $PSScriptRoot 'Disturn.iss')
+    & $IsccPath "/DAppVersion=$appVersion" "/DAppFileVersion=$appFileVersion" (Join-Path $PSScriptRoot 'Disturn.iss')
     if ($LASTEXITCODE -ne 0) { throw "Installer compilation failed (exit $LASTEXITCODE)." }
-    Get-Item -LiteralPath (Join-Path $repoRoot 'artifacts/installer/Disturn-1.0.0-Setup-x64.exe') | Select-Object FullName, Length
+    $installerPath = Join-Path $repoRoot "artifacts/installer/Disturn-$appVersion-Setup-x64.exe"
+    $installerMetadata = [System.Diagnostics.FileVersionInfo]::GetVersionInfo($installerPath)
+    # Inno pads textual resources with spaces; compare numeric fields independently.
+    $installerFileVersion = '{0}.{1}.{2}.{3}' -f $installerMetadata.FileMajorPart,
+        $installerMetadata.FileMinorPart, $installerMetadata.FileBuildPart, $installerMetadata.FilePrivatePart
+    $installerProductVersion = '{0}.{1}.{2}.{3}' -f $installerMetadata.ProductMajorPart,
+        $installerMetadata.ProductMinorPart, $installerMetadata.ProductBuildPart, $installerMetadata.ProductPrivatePart
+    if ($installerFileVersion -ne $appFileVersion -or $installerProductVersion -ne $appFileVersion -or
+        $installerMetadata.ProductVersion.Trim() -ne $appVersion) {
+        throw 'Installer version metadata does not match the project.'
+    }
+    Get-Item -LiteralPath $installerPath | Select-Object FullName, Length
 }
 finally { Pop-Location }
 

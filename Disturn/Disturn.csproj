@@ -5,6 +5,9 @@
     <TargetPlatformMinVersion>10.0.17763.0</TargetPlatformMinVersion>
     <RootNamespace>Disturn</RootNamespace>
     <AssemblyName>Disturn</AssemblyName>
+    <!-- Release version: the SDK derives AssemblyVersion/FileVersion numerically. -->
+    <Version>1.0.1</Version>
+    <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <ApplicationIcon>Assets\Disturn.ico</ApplicationIcon>
     <Platforms>x86;x64;ARM64</Platforms>

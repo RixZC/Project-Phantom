@@ -1,4 +1,4 @@
-﻿# Disturn 1.0.0 — unpackaged x64 installer
+﻿# Disturn — unpackaged x64 installer
 
 ## Build
 
@@ -25,9 +25,48 @@ dotnet publish Disturn/Disturn.csproj -c Release -r win-x64 -p:Platform=x64 -p:P
 ```
 
 Input: `artifacts/publish/Disturn-win-x64/` (not MSIX).
-Output: `artifacts/installer/Disturn-1.0.0-Setup-x64.exe`.
+Output: `artifacts/installer/Disturn-<Version>-Setup-x64.exe` (currently `Disturn-1.0.0-Setup-x64.exe`).
 Both directories are ignored by Git. Keep the folder-based, untrimmed publish profile.
 Never copy user data, source, or MSIX packages into the publish directory.
+
+## Versioning and preparing a release
+
+`Disturn/Disturn.csproj` contains the authoritative `<Version>1.0.0</Version>`.
+Use `major.minor.patch` for normal releases. The .NET SDK derives the assembly
+and numeric Windows file versions (`1.0.0.0`) from it. Informational/product
+version is `1.0.0`, without an automatically appended Git hash. The Settings
+footer reads that assembly metadata at runtime and adds its existing `V` prefix.
+
+The build helper queries evaluated MSBuild Version/FileVersion values, publishes,
+and checks both Disturn.exe and Disturn.dll metadata. It supplies `/DAppVersion`
+and `/DAppFileVersion` to Inno Setup, which uses them for display/uninstall
+version, numeric/text version resources, and the output filename. The helper
+also verifies the finished installer's metadata. Direct ISCC compilation must
+supply both values; there is intentionally no separate hardcoded default.
+
+For the next release:
+
+1. Change only `<Version>` in `Disturn/Disturn.csproj` (for example, to `1.0.1`).
+2. Run `dotnet build Disturn/Disturn.csproj -c Debug -p:Platform=x64`.
+3. Run `powershell -NoProfile -ExecutionPolicy Bypass -File installer/Build-Installer.ps1`
+   from the repository root. It republishes and compiles the matching installer.
+4. Check the Settings footer, executable Details, and installer filename/version.
+   Exit any running older Disturn instance before testing the new application.
+5. Test installation/update behavior and sign the release artifacts as appropriate.
+
+No version is incremented automatically, and these commands create no Git tags
+or GitHub Releases. Numeric file/assembly versions cannot contain prerelease or
+build suffixes; the SDK removes those suffixes while the informational/display
+version retains them. Two prereleases of the same numeric version therefore
+share numeric file versions.
+
+The preserved `Package.appxmanifest` Identity Version is a separate four-part
+**MSIX development/deployment version**, not used by the unpackaged installer or
+Settings footer. It remains unchanged; if shipping MSIX later, explicitly update
+that package version according to MSIX servicing/Store rules. The fixed
+`app.manifest` assemblyIdentity version identifies the native manifest and does
+not need to track release/file versions. Neither package identity nor the stable
+Inno AppId should be changed for a normal release.
 
 ## Appearance and branding
 
@@ -50,8 +89,8 @@ Setup and the installed application's shortcuts/uninstall entry use
 - Keep AppId `{AD661449-F6C0-44D0-BD80-4199B142600A}` stable for all future
   releases. The same ID and per-user install mode update the existing installation
   and reuse its directory/task choices instead of creating another install entry.
-  Bump AppVersion, VersionInfoVersion, and the helper's expected output filename
-  together for a new release. Do not change privileges/install mode casually.
+  Change only the project's Version for a new release (see Versioning above).
+  Do not change privileges/install mode casually.
 - Setup checks `Win32_Process` through Windows' built-in WMI COM API before
   installation. Any `Disturn.exe`, including a hidden, MSIX, or development copy,
   blocks installation until the user chooses **Exit** in its tray menu and retries.
