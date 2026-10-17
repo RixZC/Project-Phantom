@@ -5,13 +5,13 @@ using System.Threading;
 
 namespace Disturn;
 
-/// <summary>Observes group shortcuts without reserving or suppressing keyboard input.</summary>
+/// <summary>Pass-through group selection, with conditional consumption only for the assigned mute command.</summary>
 internal sealed class GroupHotkeyObserver : IDisposable
 {
-    internal readonly record struct Binding(int Id, uint VirtualKey, uint Modifiers);
+    internal readonly record struct Binding(int Id, uint VirtualKey, uint Modifiers, bool Suppress = false);
     private sealed record Snapshot(Binding[] Bindings, int Version);
     private Snapshot _snapshot = new(Array.Empty<Binding>(), 0);
-    private readonly Action<int, int> _onPressed;
+    private readonly Func<int, int, bool> _onPressed;
     private readonly Action<string> _onError;
     private readonly HookProcedure _callback;
     private readonly ManualResetEventSlim _ready = new(false);
@@ -22,8 +22,9 @@ internal sealed class GroupHotkeyObserver : IDisposable
     private int _failed;
     // Ephemeral held flags only, cleared on thread exit. No keystroke history.
     private readonly bool[] _down = new bool[256];
+    private readonly bool[] _suppressed = new bool[256];
 
-    internal GroupHotkeyObserver(Action<int, int> onPressed, Action<string> onError)
+    internal GroupHotkeyObserver(Func<int, int, bool> onPressed, Action<string> onError)
     {
         _onPressed = onPressed;
         _onError = onError;
@@ -83,6 +84,7 @@ internal sealed class GroupHotkeyObserver : IDisposable
             if (!UnhookWindowsHookEx(hook))
                 _onError("Could not release the group shortcut observer; its thread is exiting.");
             Array.Clear(_down);
+            Array.Clear(_suppressed);
             // Keep the native delegate rooted until after unhooking/thread cleanup.
             GC.KeepAlive(_callback);
         }
@@ -90,6 +92,7 @@ internal sealed class GroupHotkeyObserver : IDisposable
 
     private IntPtr Observe(int code, IntPtr wParam, IntPtr lParam)
     {
+        var suppress = false;
         try
         {
             if (code == 0)
@@ -111,7 +114,14 @@ internal sealed class GroupHotkeyObserver : IDisposable
                         var pressed = message is 0x100 or 0x104;
                         var repeated = _down[key];
                         _down[key] = pressed;
-                        if (pressed && !repeated)
+                        if (_suppressed[key])
+                        {
+                            // Keep repeats/key-up paired with an already consumed mute press,
+                            // even if selection or assignments changed while the key was held.
+                            suppress = true;
+                            if (!pressed) _suppressed[key] = false;
+                        }
+                        if (pressed && !repeated && !suppress)
                         {
                             var modifiers = (_down[0xA2] || _down[0xA3] ? 2u : 0) |
                                 (_down[0xA0] || _down[0xA1] ? 4u : 0) |
@@ -121,7 +131,12 @@ internal sealed class GroupHotkeyObserver : IDisposable
                             foreach (var binding in snapshot.Bindings)
                             {
                                 if (binding.VirtualKey != input.VirtualKey || binding.Modifiers != modifiers) continue;
-                                _onPressed(binding.Id, snapshot.Version);
+                                var queued = _onPressed(binding.Id, snapshot.Version);
+                                if (binding.Suppress && queued)
+                                {
+                                    _suppressed[key] = true;
+                                    suppress = true;
+                                }
                                 break;
                             }
                         }
@@ -136,8 +151,9 @@ internal sealed class GroupHotkeyObserver : IDisposable
             Volatile.Write(ref _snapshot, new Snapshot(Array.Empty<Binding>(), -1));
             _onError("Group shortcut observation failed. Restart Disturn to retry.");
         }
-        // Always pass through, including matches, repeats, and negative hook codes.
-        return CallNextHookEx(IntPtr.Zero, code, wParam, lParam);
+        // Group selections and unrelated keys always pass through. Only a queued,
+        // explicitly consuming mute binding (and its paired repeats/up) is swallowed.
+        return suppress ? new IntPtr(1) : CallNextHookEx(IntPtr.Zero, code, wParam, lParam);
     }
 
     public void Dispose()

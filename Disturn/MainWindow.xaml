@@ -45,6 +45,16 @@
             <Grid.Resources>
                 <local:AccentColorBrushConverter x:Key="AccentColorBrushConverter" />
                 <local:GroupExpansionToolTipConverter x:Key="GroupExpansionToolTipConverter" />
+                <Style x:Key="GroupHeaderButtonStyle" TargetType="Button">
+                    <Setter Property="Width" Value="32" />
+                    <Setter Property="Height" Value="32" />
+                    <Setter Property="MinWidth" Value="32" />
+                    <Setter Property="MinHeight" Value="32" />
+                    <Setter Property="Padding" Value="0" />
+                    <Setter Property="Background" Value="Transparent" />
+                    <Setter Property="BorderThickness" Value="0" />
+                    <Setter Property="VerticalAlignment" Value="Center" />
+                </Style>
             </Grid.Resources>
             <StackPanel Spacing="12">
                 <Grid ColumnSpacing="12">
@@ -122,6 +132,7 @@
                                         <Grid.ColumnDefinitions>
                                             <ColumnDefinition Width="*" />
                                             <ColumnDefinition Width="Auto" />
+                                            <ColumnDefinition Width="Auto" />
                                         </Grid.ColumnDefinitions>
                                         <TextBlock
                                             Grid.Column="0"
@@ -130,15 +141,25 @@
                                             FontWeight="SemiBold"
                                             TextTrimming="CharacterEllipsis"
                                             VerticalAlignment="Center" />
-                                        <Button
-                                            Grid.Column="1"
-                                            Content="{Binding SelectionLabel}"
-                                            MinWidth="68" Height="32" Padding="8,4"
-                                            Background="Transparent" BorderThickness="0"
-                                            VerticalAlignment="Center"
+                                        <Button Grid.Column="1" Style="{StaticResource GroupHeaderButtonStyle}"
+                                            Click="MuteGroupButton_Click"
+                                            ToolTipService.ToolTip="{Binding MuteToolTip}"
+                                            AutomationProperties.Name="{Binding MuteAccessibleName}">
+                                            <FontIcon Glyph="{Binding MuteGlyph}" FontSize="16"
+                                                      FontFamily="{ThemeResource SymbolThemeFontFamily}" />
+                                        </Button>
+                                        <Button Grid.Column="2" Style="{StaticResource GroupHeaderButtonStyle}"
                                             Click="SelectGroupButton_Click"
-                                            ToolTipService.ToolTip="Select this group for volume commands"
-                                            AutomationProperties.Name="Select group for volume commands" />
+                                            ToolTipService.ToolTip="{Binding SelectionToolTip}"
+                                            AutomationProperties.Name="{Binding SelectionAccessibleName}">
+                                            <Grid Width="18" Height="18">
+                                                <Ellipse Stroke="{ThemeResource TextFillColorSecondaryBrush}"
+                                                         StrokeThickness="1.5" />
+                                                <Ellipse Width="8" Height="8"
+                                                         Fill="{ThemeResource AccentFillColorDefaultBrush}"
+                                                         Opacity="{Binding SelectionIndicatorOpacity}" />
+                                            </Grid>
+                                        </Button>
                                     </Grid>
                                 </Expander.Header>
 
@@ -161,29 +182,31 @@
                                                    VerticalAlignment="Center"
                                                    HorizontalTextAlignment="Right" />
                                     </Grid>
-                                    <Button HorizontalAlignment="Left"
-                                            Padding="8,4"
-                                            Click="ShortcutButton_Click"
-                                            ToolTipService.ToolTip="Set a shortcut to select this group"
-                                            AutomationProperties.Name="Group shortcut">
-                                        <StackPanel Orientation="Horizontal" Spacing="8">
-                                            <TextBlock Text="Shortcut" />
+                                    <StackPanel Spacing="6">
+                                        <TextBlock Text="Shortcut" />
+                                        <Button HorizontalAlignment="Left"
+                                                Padding="8,4"
+                                                Click="ShortcutButton_Click"
+                                                ToolTipService.ToolTip="Set a shortcut to select this group"
+                                                AutomationProperties.Name="Group shortcut">
                                             <TextBlock Text="{Binding ShortcutLabel}" />
-                                        </StackPanel>
-                                    </Button>
-                                    <Button HorizontalAlignment="Left"
-                                            Padding="8,4"
-                                            Click="AccentColorButton_Click"
-                                            ToolTipService.ToolTip="Choose the tray accent color"
-                                            AutomationProperties.Name="Tray accent color">
-                                        <StackPanel Orientation="Horizontal" Spacing="8">
-                                            <Border Width="16" Height="16" CornerRadius="4"
-                                                    Background="{Binding AccentColor, Converter={StaticResource AccentColorBrushConverter}}"
-                                                    VerticalAlignment="Center" />
-                                            <TextBlock Text="Accent" VerticalAlignment="Center" />
-                                            <TextBlock Text="{Binding AccentColor}" VerticalAlignment="Center" />
-                                        </StackPanel>
-                                    </Button>
+                                        </Button>
+                                    </StackPanel>
+                                    <StackPanel Spacing="6">
+                                        <TextBlock Text="Color" />
+                                        <Button HorizontalAlignment="Left"
+                                                Padding="8,4"
+                                                Click="AccentColorButton_Click"
+                                                ToolTipService.ToolTip="Choose the tray accent color"
+                                                AutomationProperties.Name="Tray accent color">
+                                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                                <Border Width="16" Height="16" CornerRadius="4"
+                                                        Background="{Binding AccentColor, Converter={StaticResource AccentColorBrushConverter}}"
+                                                        VerticalAlignment="Center" />
+                                                <TextBlock Text="{Binding AccentColor}" VerticalAlignment="Center" />
+                                            </StackPanel>
+                                        </Button>
+                                    </StackPanel>
                                     <TextBlock
                                         Text="Applications"
                                         FontWeight="SemiBold" />
@@ -303,33 +326,60 @@
                     <StackPanel Spacing="12">
                         <TextBlock Text="Global shortcuts adjust the selected group. Without a selected group, they adjust Windows master volume."
                                    TextWrapping="Wrap" Opacity="0.7" />
-                        <Button Tag="Up" Click="VolumeShortcutButton_Click" HorizontalAlignment="Left"
-                                ToolTipService.ToolTip="Set a global shortcut for increasing volume">
-                            <StackPanel Orientation="Horizontal" Spacing="12">
-                                <TextBlock Text="Volume Up" />
+                        <StackPanel Spacing="6">
+                            <TextBlock Text="Volume Up" />
+                            <Button Tag="Up" Click="VolumeShortcutButton_Click" HorizontalAlignment="Left"
+                                    AutomationProperties.Name="Configure volume up shortcut"
+                                    ToolTipService.ToolTip="Set a global shortcut for increasing volume">
                                 <TextBlock x:Name="VolumeUpShortcutText" Text="Not assigned" />
-                            </StackPanel>
-                        </Button>
-                        <Button Tag="Down" Click="VolumeShortcutButton_Click" HorizontalAlignment="Left"
-                                ToolTipService.ToolTip="Set a global shortcut for decreasing volume">
-                            <StackPanel Orientation="Horizontal" Spacing="12">
-                                <TextBlock Text="Volume Down" />
+                            </Button>
+                        </StackPanel>
+                        <StackPanel Spacing="6">
+                            <TextBlock Text="Volume Down" />
+                            <Button Tag="Down" Click="VolumeShortcutButton_Click" HorizontalAlignment="Left"
+                                    AutomationProperties.Name="Configure volume down shortcut"
+                                    ToolTipService.ToolTip="Set a global shortcut for decreasing volume">
                                 <TextBlock x:Name="VolumeDownShortcutText" Text="Not assigned" />
-                            </StackPanel>
-                        </Button>
-                        <TextBlock Text="Volume adjustment step" />
+                            </Button>
+                        </StackPanel>
+                        <StackPanel Spacing="6">
+                            <TextBlock Text="Mute/Unmute Selected Group" />
+                            <Button Tag="Mute" Click="VolumeShortcutButton_Click" HorizontalAlignment="Left"
+                                    AutomationProperties.Name="Configure mute shortcut"
+                                    ToolTipService.ToolTip="Set a shortcut to toggle selected group mute">
+                                <TextBlock x:Name="MuteShortcutText" Text="Not assigned" />
+                            </Button>
+                        </StackPanel>
+                        <TextBlock Text="The mute shortcut controls a selected group. With no selection, Windows handles the media mute key normally."
+                                   TextWrapping="Wrap" Opacity="0.7" />
+                        <ToggleSwitch x:Name="MuteFeedbackToggle" Header="Mute feedback sounds"
+                                      OnContent="Enabled" OffContent="Disabled"
+                                      ToolTipService.ToolTip="Play a sound when group mute changes" />
                         <Grid ColumnSpacing="12">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="*" />
-                                <ColumnDefinition Width="48" />
+                                <ColumnDefinition Width="Auto" />
                             </Grid.ColumnDefinitions>
-                            <Slider x:Name="VolumeStepSlider" Minimum="1" Maximum="20"
-                                    StepFrequency="1" Value="2"
-                                    ToolTipService.ToolTip="Choose percentage points per volume shortcut press"
-                                    AutomationProperties.Name="Volume adjustment step in percentage points" />
-                            <TextBlock x:Name="VolumeStepText" Grid.Column="1" Text="2%"
-                                       VerticalAlignment="Center" HorizontalTextAlignment="Right" />
+                            <TextBlock Text="Feedback volume" />
+                            <TextBlock x:Name="FeedbackVolumeText" Grid.Column="1" Text="35%" />
                         </Grid>
+                        <Slider x:Name="FeedbackVolumeSlider" Minimum="0" Maximum="100"
+                                StepFrequency="1" Value="35"
+                                IsEnabled="{Binding IsOn, ElementName=MuteFeedbackToggle}"
+                                ToolTipService.ToolTip="Adjust mute and unmute feedback loudness"
+                                AutomationProperties.Name="Feedback volume" />
+                        <Grid ColumnSpacing="12">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Text="Volume adjustment step" />
+                            <TextBlock x:Name="VolumeStepText" Grid.Column="1" Text="2%" />
+                        </Grid>
+                        <Slider x:Name="VolumeStepSlider" Minimum="1" Maximum="20"
+                                StepFrequency="1" Value="2"
+                                ToolTipService.ToolTip="Choose percentage points per volume shortcut press"
+                                AutomationProperties.Name="Volume adjustment step in percentage points" />
                     </StackPanel>
                 </Border>
             </StackPanel>
@@ -381,20 +431,35 @@
             </StackPanel>
 
             <StackPanel Spacing="8" Margin="0,8,0,0">
-                <TextBlock Text="Tray icon appearance" FontSize="20" FontWeight="SemiBold" />
+                <TextBlock Text="App style" FontSize="20" FontWeight="SemiBold" />
                 <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
                         BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
                         BorderThickness="1" CornerRadius="4" Padding="16">
-                    <StackPanel Spacing="8">
-                        <TextBlock Text="Choose the volume indicator's text color for your taskbar."
-                                   TextWrapping="Wrap" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-                        <ComboBox x:Name="TrayAppearanceComboBox" MinWidth="220"
-                                  ToolTipService.ToolTip="Change tray text without changing the app theme"
-                                  AutomationProperties.Name="Tray icon appearance">
-                            <ComboBoxItem Content="Automatic (follow Windows)" Tag="Automatic" />
-                            <ComboBoxItem Content="Light mode" Tag="Light" />
-                            <ComboBoxItem Content="Dark mode" Tag="Dark" />
-                        </ComboBox>
+                    <StackPanel Spacing="16">
+                        <StackPanel Spacing="8">
+                            <TextBlock Text="Window appearance" FontWeight="SemiBold" />
+                            <TextBlock Text="Choose light or dark colors for Disturn's window."
+                                       TextWrapping="Wrap" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                            <ComboBox x:Name="AppAppearanceComboBox" MinWidth="220"
+                                      ToolTipService.ToolTip="Change the app's window and text colors"
+                                      AutomationProperties.Name="App style">
+                                <ComboBoxItem Content="Automatic (follow Windows)" Tag="Automatic" />
+                                <ComboBoxItem Content="Light mode" Tag="Light" />
+                                <ComboBoxItem Content="Dark mode" Tag="Dark" />
+                            </ComboBox>
+                        </StackPanel>
+                        <StackPanel Spacing="8">
+                            <TextBlock Text="Tray icon appearance" FontWeight="SemiBold" />
+                            <TextBlock Text="Choose the volume indicator's text color for your taskbar."
+                                       TextWrapping="Wrap" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                            <ComboBox x:Name="TrayAppearanceComboBox" MinWidth="220"
+                                      ToolTipService.ToolTip="Change tray text without changing the app theme"
+                                      AutomationProperties.Name="Tray icon appearance">
+                                <ComboBoxItem Content="Automatic (follow Windows)" Tag="Automatic" />
+                                <ComboBoxItem Content="Light mode" Tag="Light" />
+                                <ComboBoxItem Content="Dark mode" Tag="Dark" />
+                            </ComboBox>
+                        </StackPanel>
                     </StackPanel>
                 </Border>
             </StackPanel>

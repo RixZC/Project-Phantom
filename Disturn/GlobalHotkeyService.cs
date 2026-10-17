@@ -8,7 +8,7 @@ using Microsoft.UI.Dispatching;
 
 namespace Disturn;
 
-internal enum VolumeCommand { Up, Down }
+internal enum VolumeCommand { Up, Down, Mute }
 
 /// <summary>Owns group and volume-command shortcuts on the existing window's UI thread.</summary>
 internal sealed class GlobalHotkeyService : IDisposable
@@ -20,18 +20,20 @@ internal sealed class GlobalHotkeyService : IDisposable
     private readonly uint _owningThread;
     private readonly Action<GroupItem> _selectGroup;
     private readonly Action<int> _adjustVolume;
+    private readonly Action _toggleMute;
+    private bool _hasSelectedGroup;
     private readonly Action<string?> _reportWarning;
     private readonly SubclassProcedure _callback;
     private readonly DispatcherQueue _dispatcher;
     private readonly GroupHotkeyObserver _groupObserver;
-    private readonly Dictionary<int, GroupShortcut> _observedShortcuts = new();
+    private readonly Dictionary<int, (GroupShortcut Shortcut, bool Suppress)> _observedShortcuts = new();
     private int _observerVersion;
     private readonly HashSet<int> _registeredIds = new();
     private readonly Dictionary<int, Registration> _registrations = new();
     private readonly HashSet<GroupItem> _knownGroups = new();
     private readonly Dictionary<VolumeCommand, GroupShortcut?> _volumeShortcuts = new()
     {
-        [VolumeCommand.Up] = null, [VolumeCommand.Down] = null
+        [VolumeCommand.Up] = null, [VolumeCommand.Down] = null, [VolumeCommand.Mute] = null
     };
     private readonly Dictionary<VolumeCommand, string?> _volumeErrors = new();
     public event Action? StatusChanged;
@@ -43,17 +45,18 @@ internal sealed class GlobalHotkeyService : IDisposable
     private bool _suspendedForRecording;
 
     public GlobalHotkeyService(IntPtr windowHandle, Action<GroupItem> selectGroup, Action<string?> reportWarning,
-        Action<int> adjustVolume)
+        Action<int> adjustVolume, Action toggleMute)
     {
         _windowHandle = windowHandle;
         _owningThread = GetCurrentThreadId();
         _selectGroup = selectGroup;
         _adjustVolume = adjustVolume;
+        _toggleMute = toggleMute;
         _reportWarning = reportWarning;
         _callback = WindowProcedure;
         _dispatcher = DispatcherQueue.GetForCurrentThread()
             ?? throw new InvalidOperationException("Global shortcuts require a UI dispatcher.");
-        _groupObserver = new GroupHotkeyObserver(QueueGroupSelection, warning =>
+        _groupObserver = new GroupHotkeyObserver(QueueObservedShortcut, warning =>
             _dispatcher.TryEnqueue(() => ReportObserverFailure(warning)));
         if (windowHandle == IntPtr.Zero || GetWindowThreadProcessId(windowHandle, out _) != _owningThread)
         {
@@ -91,7 +94,7 @@ internal sealed class GlobalHotkeyService : IDisposable
     }
 
     private static string OwnerName(GroupItem? group, VolumeCommand? command) =>
-        group is not null ? group.Name : $"Volume {command}";
+        group is not null ? group.Name : command == VolumeCommand.Mute ? "Mute/Unmute Selected Group" : $"Volume {command}";
 
     public GroupShortcut? GetVolumeShortcut(VolumeCommand command) => _volumeShortcuts[command];
     public string? GetVolumeError(VolumeCommand command) => _volumeErrors.GetValueOrDefault(command);
@@ -144,7 +147,7 @@ internal sealed class GlobalHotkeyService : IDisposable
     {
         VerifyThread();
         error = null;
-        if (group is null && command is not (VolumeCommand.Up or VolumeCommand.Down))
+        if (group is null && command is not (VolumeCommand.Up or VolumeCommand.Down or VolumeCommand.Mute))
         {
             error = "Unknown volume command.";
             return false;
@@ -202,7 +205,7 @@ internal sealed class GlobalHotkeyService : IDisposable
                 _registeredIds.Remove(incoming!.Id);
             }
             newId = _nextId++;
-            if (!ActivateShortcut(newId, group, shortcut))
+            if (!ActivateShortcut(newId, group, shortcut, command))
             {
                 error = ErrorMessage(group is null
                     ? $"Could not register {shortcut.Label}; another app or Windows may already use it"
@@ -240,7 +243,7 @@ internal sealed class GlobalHotkeyService : IDisposable
     private void RestoreIncoming(Registration? incoming, bool wasActive, ref string? error)
     {
         if (!wasActive || incoming is null) return;
-        if (ActivateShortcut(incoming.Id, incoming.Group, incoming.Shortcut))
+        if (ActivateShortcut(incoming.Id, incoming.Group, incoming.Shortcut, incoming.Command))
             _registeredIds.Add(incoming.Id);
         else
         {
@@ -269,16 +272,16 @@ internal sealed class GlobalHotkeyService : IDisposable
     }
     private sealed record Registration(int Id, GroupItem? Group, GroupShortcut Shortcut, VolumeCommand? Command = null);
 
-    private bool ActivateShortcut(int id, GroupItem? group, GroupShortcut shortcut)
+    private bool ActivateShortcut(int id, GroupItem? group, GroupShortcut shortcut, VolumeCommand? command)
     {
-        if (group is null)
+        if (group is null && command != VolumeCommand.Mute)
             return RegisterHotKey(_windowHandle, id, shortcut.Modifiers, shortcut.VirtualKey);
         if (!_groupObserver.TryStart(out var error))
         {
             Marshal.SetLastPInvokeError(error);
             return false;
         }
-        _observedShortcuts[id] = shortcut;
+        _observedShortcuts[id] = (shortcut, command == VolumeCommand.Mute);
         PublishObservedShortcuts();
         return true;
     }
@@ -293,9 +296,18 @@ internal sealed class GlobalHotkeyService : IDisposable
     private void PublishObservedShortcuts()
     {
         // Every change invalidates queued commands from the previous snapshot.
-        _groupObserver.Update(_observedShortcuts.Select(pair =>
-            new GroupHotkeyObserver.Binding(pair.Key, pair.Value.VirtualKey, pair.Value.Modifiers)).ToArray(),
+        _groupObserver.Update(_observedShortcuts.Where(pair => !pair.Value.Suppress || _hasSelectedGroup).Select(pair =>
+            new GroupHotkeyObserver.Binding(pair.Key, pair.Value.Shortcut.VirtualKey,
+                pair.Value.Shortcut.Modifiers, pair.Value.Suppress)).ToArray(),
             ++_observerVersion);
+    }
+
+    public void SetSelectedGroupAvailable(bool available)
+    {
+        VerifyThread();
+        if (_hasSelectedGroup == available) return;
+        _hasSelectedGroup = available;
+        PublishObservedShortcuts();
     }
 
     private void ReportObserverFailure(string warning)
@@ -305,7 +317,10 @@ internal sealed class GlobalHotkeyService : IDisposable
         {
             _registeredIds.Remove(id);
             if (_registrations.TryGetValue(id, out var registration))
+            {
                 registration.Group?.SetShortcutStatus(false, warning);
+                if (registration.Command is VolumeCommand command) _volumeErrors[command] = warning;
+            }
         }
         _observedShortcuts.Clear();
         PublishObservedShortcuts();
@@ -313,15 +328,18 @@ internal sealed class GlobalHotkeyService : IDisposable
         StatusChanged?.Invoke();
     }
 
-    private void QueueGroupSelection(int id, int version)
+    private bool QueueObservedShortcut(int id, int version)
     {
-        // Hook thread: no model access, selection, persistence, or audio work here.
-        _dispatcher.TryEnqueue(() =>
+        // Hook thread: queue only, never access models, sessions, or storage here.
+        return _dispatcher.TryEnqueue(() =>
         {
             if (_disposed || _suspendedForRecording || version != _observerVersion ||
-                !_registeredIds.Contains(id) || !_registrations.TryGetValue(id, out var registration) ||
-                registration.Group is null) return;
-            try { _selectGroup(registration.Group); }
+                !_registeredIds.Contains(id) || !_registrations.TryGetValue(id, out var registration)) return;
+            try
+            {
+                if (registration.Group is not null) _selectGroup(registration.Group);
+                else if (registration.Command == VolumeCommand.Mute && _hasSelectedGroup) _toggleMute();
+            }
             catch (Exception)
             {
                 // Never log the triggering key or its configured combination.
@@ -367,7 +385,7 @@ internal sealed class GlobalHotkeyService : IDisposable
         foreach (var registration in _registrations.Values)
         {
             if (_registeredIds.Contains(registration.Id)) continue;
-            if (ActivateShortcut(registration.Id, registration.Group, registration.Shortcut))
+            if (ActivateShortcut(registration.Id, registration.Group, registration.Shortcut, registration.Command))
             {
                 _registeredIds.Add(registration.Id);
                 registration.Group?.SetShortcutStatus(true, null);
@@ -412,7 +430,7 @@ internal sealed class GlobalHotkeyService : IDisposable
                 // delay, window activation, or audio-control call is needed.
                 try
                 {
-                    if (registration.Command is VolumeCommand command)
+                    if (registration.Command is VolumeCommand.Up or VolumeCommand.Down && registration.Command is VolumeCommand command)
                         _adjustVolume(command == VolumeCommand.Up ? 1 : -1);
                 }
                 catch (Exception ex)

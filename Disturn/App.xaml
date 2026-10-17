@@ -10,7 +10,17 @@
                 <XamlControlsResources xmlns="using:Microsoft.UI.Xaml.Controls" />
                 <!-- Other merged dictionaries here -->
             </ResourceDictionary.MergedDictionaries>
-            <!-- Other app resources here -->
+            <ResourceDictionary.ThemeDictionaries>
+                <!-- Windows 11 blue for light UI; dark/high contrast retain native accents. -->
+                <ResourceDictionary x:Key="Light">
+                    <SolidColorBrush x:Key="AccentFillColorDefaultBrush" Color="#005FB8" />
+                    <SolidColorBrush x:Key="AccentFillColorSecondaryBrush" Color="#E6005FB8" />
+                    <SolidColorBrush x:Key="AccentFillColorTertiaryBrush" Color="#CC005FB8" />
+                    <SolidColorBrush x:Key="AccentTextFillColorPrimaryBrush" Color="#003E92" />
+                    <SolidColorBrush x:Key="AccentTextFillColorSecondaryBrush" Color="#001A68" />
+                    <SolidColorBrush x:Key="AccentTextFillColorTertiaryBrush" Color="#005FB8" />
+                </ResourceDictionary>
+            </ResourceDictionary.ThemeDictionaries>
         </ResourceDictionary>
     </Application.Resources>
 </Application>

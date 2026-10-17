@@ -129,7 +129,7 @@ Check(migrated.Settings.DefaultGroupId == id && migrated.Settings.StartMinimized
     GroupPersistenceService.ReadShortcut(migrated.Settings.VolumeUpShortcut)?.VirtualKey == 107 &&
     migrated.Settings.VolumeDownShortcut.ValueKind == JsonValueKind.Null, "application settings and volume command bindings survive migration");
 var repeat = GroupPersistenceService.LoadWithMigration(destination, source);
-Check(repeat.CanSave && Directory.GetFiles(Path.GetDirectoryName(destination)!, "*.bak").Length == 1, "migration is not repeated");
+Check(repeat.CanSave && Directory.GetFiles(Path.GetDirectoryName(destination)!, "*.pre-migration.*.bak").Length == 1 && Hash(destination) == original, "migration is not repeated");
 
 var existing = FileAt("existing", "destination/groups.json", json.Replace("Fixture Media", "Destination wins"));
 var existingHash = Hash(existing);
@@ -203,6 +203,74 @@ foreach (var mode in new[] { TrayIconAppearance.Automatic, TrayIconAppearance.Li
         GroupPersistenceService.ReadShortcut(restored.Settings.VolumeUpShortcut)?.VirtualKey == 107,
         mode + " round-trips through disk without changing existing settings/groups");
 }
+
+// Mute policy tests use fake session state: no real application/master audio changes.
+var state = new SessionMuteState();
+var liveMute = false;
+var muteWrites = new List<bool>();
+bool WriteMute(bool value) { liveMute = value; muteWrites.Add(value); return true; }
+Check(state.Apply(true, liveMute, WriteMute) && liveMute, "group mute requests session mute");
+Check(state.Apply(true, liveMute, WriteMute) && muteWrites.Count == 1, "reconciliation does not repeatedly set mute");
+Check(state.Apply(false, liveMute, WriteMute) && !liveMute && muteWrites.SequenceEqual(new[] { true, false }),
+    "group unmute releases only its owned mute");
+state = new SessionMuteState(); liveMute = true; muteWrites.Clear();
+Check(state.Apply(true, liveMute, WriteMute) && state.Apply(false, liveMute, WriteMute) && liveMute && muteWrites.Count == 0,
+    "independently muted session stays muted without any writes");
+state = new SessionMuteState(); liveMute = false; muteWrites.Clear();
+state.Apply(true, liveMute, WriteMute);
+liveMute = false; // External unmute observed during reconciliation.
+state.Apply(true, liveMute, WriteMute);
+liveMute = true; // External mute after relinquishing ownership.
+Check(state.Apply(false, liveMute, WriteMute) && liveMute && muteWrites.Count == 1,
+    "external unmute relinquishes mute ownership without fighting the mixer");
+state = new SessionMuteState(); liveMute = false; muteWrites.Clear();
+Check(!state.Apply(true, liveMute, _ => false) && state.Apply(true, liveMute, WriteMute) && liveMute,
+    "failed mute write can be retried");
+Check(!state.Apply(false, liveMute, _ => false) && state.Apply(false, liveMute, WriteMute) && !liveMute,
+    "failed unmute write retains ownership for retry");
+state = new SessionMuteState(); liveMute = false;
+Check(state.Apply(true, liveMute, WriteMute) && liveMute, "new session inherits a muted group");
+Check(state.Apply(false, liveMute, WriteMute) && !liveMute, "normal cleanup restores the owned mute");
+Check(!migrated.Groups[0].IsMuted && migrated.Settings.MuteFeedbackSounds &&
+    migrated.Settings.MuteShortcut.ValueKind == JsonValueKind.Undefined,
+    "legacy save defaults to unmuted, feedback enabled, and missing mute binding");
+foreach (var muteCandidate in new GroupShortcut?[] { new(0xAD), new(0x74, 2), null })
+{
+    var mutedDocument = JsonSerializer.Deserialize<SavedGroupsDocument>(json)!;
+    mutedDocument.SchemaVersion = 7;
+    mutedDocument.Groups![0].IsMuted = true;
+    mutedDocument.Settings!.MuteFeedbackSounds = false;
+    mutedDocument.Settings.MuteShortcut = GroupPersistenceService.WriteShortcut(muteCandidate, true);
+    var mutedFile = FileAt("mute-" + (muteCandidate?.VirtualKey.ToString() ?? "cleared"), "groups.json", JsonSerializer.Serialize(mutedDocument));
+    var restoredMute = GroupPersistenceService.LoadFile(mutedFile);
+    Check(restoredMute.CanSave && restoredMute.Groups[0].IsMuted && !restoredMute.Settings.MuteFeedbackSounds &&
+        restoredMute.Groups[0].VolumePercent == 64 && restoredMute.Groups[0].Applications.Count == 1 &&
+        GroupPersistenceService.ReadShortcut(restoredMute.Settings.MuteShortcut)?.VirtualKey == muteCandidate?.VirtualKey &&
+        GroupPersistenceService.ReadShortcut(restoredMute.Settings.MuteShortcut)?.Modifiers == muteCandidate?.Modifiers &&
+        restoredMute.Settings.MuteShortcut.ValueKind != JsonValueKind.Undefined,
+        "mute settings round-trip, preserving volume/apps and distinguishing an explicitly cleared binding");
+}
+
+Check(migrated.Settings.FeedbackVolumePercent == 35,
+    "older settings default feedback volume to 35 percent");
+foreach (var level in new[] { 0, 35, 100 })
+{
+    foreach (var enabled in new[] { false, true })
+    {
+        var feedbackDocument = JsonSerializer.Deserialize<SavedGroupsDocument>(json)!;
+        feedbackDocument.Settings!.FeedbackVolumePercent = level;
+        feedbackDocument.Settings.MuteFeedbackSounds = enabled;
+        var feedbackPath = FileAt($"feedback-{level}-{enabled}", "groups.json", JsonSerializer.Serialize(feedbackDocument));
+        var feedbackRestored = GroupPersistenceService.LoadFile(feedbackPath);
+        Check(feedbackRestored.CanSave && feedbackRestored.Settings.FeedbackVolumePercent == level &&
+            feedbackRestored.Settings.MuteFeedbackSounds == enabled && feedbackRestored.Groups[0].VolumePercent == 64 &&
+            !feedbackRestored.Groups[0].IsMuted,
+            "feedback level and enabled state persist independently without changing group audio settings");
+    }
+}
+Check(new SavedApplicationSettings { FeedbackVolumePercent = -1 }.FeedbackVolumePercent == 0 &&
+    new SavedApplicationSettings { FeedbackVolumePercent = 101 }.FeedbackVolumePercent == 100,
+    "feedback volume is clamped safely to 0 through 100");
 
 Console.WriteLine($"Completed {assertions} assertions. Fixtures retained at: {fixtureRoot}");
 

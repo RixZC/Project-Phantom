@@ -44,6 +44,7 @@ internal sealed class TrayIconService : IDisposable
     private const int SmallIconHeightMetric = 50;
     private const int GdipUnitPixel = 2;
     private const int GdipFontStyleRegular = 0;
+    private const int MuteGlyphFontSizeAt96Dpi = 15; // Logical pixels; independent of retained volume.
     private const int GdipStringFormatNoWrap = 0x1000;
     private const int GdipStringFormatNoClip = 0x4000;
     private const int GdipStringFormatNoFitBlackBox = 4;
@@ -54,6 +55,7 @@ internal sealed class TrayIconService : IDisposable
 
     private readonly IntPtr _windowHandle;
     private readonly DispatcherQueue _dispatcher;
+    private bool _selectedGroupMuted;
     private readonly Action _openAction;
     private readonly Action _exitAction;
     private readonly Action<RectInt32>? _showStyledMenu;
@@ -64,12 +66,22 @@ internal sealed class TrayIconService : IDisposable
     private readonly UIntPtr _gdiplusToken;
     private readonly IntPtr _menuLogoBitmap;
     private IntPtr _currentIcon;
+    private IconPresentation? _renderedPresentation;
+
     private string? _selectedGroupName;
     private int _selectedGroupVolume = 100;
     private string _selectedAccentColor = GroupTrayColors.DefaultAccent;
     private string _appearance = TrayIconAppearance.Automatic;
     private bool _systemUsesLightTheme = TrayIconAppearance.ReadSystemUsesLightTheme();
     private bool _disposed;
+
+    private readonly record struct IconPresentation(bool Selected, int Volume, bool Muted,
+        string Accent, uint TextArgb, int Size);
+
+    private IconPresentation GetIconPresentation() => _selectedGroupName is null
+        ? new(false, 0, false, string.Empty, 0, GetTrayIconSize())
+        : new(true, _selectedGroupVolume, _selectedGroupMuted, _selectedAccentColor,
+            TrayIconAppearance.TextArgb(_appearance, _systemUsesLightTheme), GetTrayIconSize());
 
     public TrayIconService(IntPtr windowHandle, DispatcherQueue dispatcher, Action openAction, Action exitAction,
         Action<RectInt32>? showStyledMenu = null, Action? settingsAction = null)
@@ -104,6 +116,7 @@ internal sealed class TrayIconService : IDisposable
         }
 
         _currentIcon = CreateCurrentIcon();
+        _renderedPresentation = GetIconPresentation();
         if (_currentIcon == IntPtr.Zero || !AddTrayIcon())
         {
             RemoveWindowSubclass(_windowHandle, _subclassProcedure, SubclassId);
@@ -130,16 +143,26 @@ internal sealed class TrayIconService : IDisposable
     {
         if (_disposed) return;
         _systemUsesLightTheme = TrayIconAppearance.ReadSystemUsesLightTheme();
-        UpdateSelectedGroup(_selectedGroupName, _selectedGroupVolume, _selectedAccentColor);
+        UpdateSelectedGroup(_selectedGroupName, _selectedGroupVolume, _selectedAccentColor, _selectedGroupMuted);
     }
 
-    public void UpdateSelectedGroup(string? groupName, int volumePercent, string? accentColor = null)
+    public void UpdateSelectedGroup(string? groupName, int volumePercent, string? accentColor = null, bool muted = false)
     {
         _selectedGroupName = string.IsNullOrWhiteSpace(groupName) ? null : groupName.Trim();
         _selectedGroupVolume = Math.Clamp(volumePercent, 0, 100);
+        _selectedGroupMuted = _selectedGroupName is not null && muted;
         _selectedAccentColor = GroupTrayColors.Normalize(accentColor, GroupTrayColors.DefaultAccent);
         if (_disposed)
         {
+            return;
+        }
+
+        var presentation = GetIconPresentation();
+        if (_currentIcon != IntPtr.Zero && _renderedPresentation == presentation)
+        {
+            var tooltip = CreateNotifyIconData(_currentIcon, _selectedGroupName, _selectedGroupVolume);
+            tooltip.Flags = NifTip;
+            Shell_NotifyIcon(NimModify, ref tooltip);
             return;
         }
 
@@ -158,10 +181,18 @@ internal sealed class TrayIconService : IDisposable
 
         var previousIcon = _currentIcon;
         _currentIcon = replacementIcon;
+        _renderedPresentation = presentation;
         if (previousIcon != IntPtr.Zero)
         {
             DestroyIcon(previousIcon);
         }
+    }
+
+    public void SetSelectedGroupMuted(bool muted)
+    {
+        muted = _selectedGroupName is not null && muted;
+        if (_disposed || _selectedGroupMuted == muted) return;
+        UpdateSelectedGroup(_selectedGroupName, _selectedGroupVolume, _selectedAccentColor, muted);
     }
 
     private void AddMenuItems()
@@ -244,25 +275,29 @@ internal sealed class TrayIconService : IDisposable
             Flags = NifMessage | NifIcon | NifTip,
             CallbackMessage = TrayCallbackMessage,
             IconHandle = icon,
-            Tip = BuildTooltip(groupName, volumePercent),
+            Tip = BuildTooltipText(groupName, volumePercent, _selectedGroupMuted),
             Info = string.Empty,
             InfoTitle = string.Empty
         };
     }
 
-    private static string BuildTooltip(string? groupName, int volumePercent)
+    private static string BuildTooltip(string? groupName, int volumePercent) =>
+        BuildTooltipText(groupName, volumePercent, false);
+
+    private static string BuildTooltipText(string? groupName, int volumePercent, bool muted)
     {
         if (string.IsNullOrWhiteSpace(groupName))
         {
             return "No group selected";
         }
 
-        var suffix = $" â€” {volumePercent}%";
+        const string prefix = "Disturn \u2014 ";
+        var suffix = (muted ? " | Muted" : "") + $" | Volume: {Math.Clamp(volumePercent, 0, 100)}%";
         var name = groupName.Trim();
-        var maxNameLength = 127 - suffix.Length;
+        var maxNameLength = 127 - prefix.Length - suffix.Length;
         if (name.Length > maxNameLength)
         {
-            var ellipsis = "â€¦";
+            var ellipsis = "\u2026";
             var nameLength = maxNameLength - ellipsis.Length;
             if (char.IsHighSurrogate(name[nameLength - 1]))
             {
@@ -272,7 +307,7 @@ internal sealed class TrayIconService : IDisposable
             name = name[..nameLength] + ellipsis;
         }
 
-        return name + suffix;
+        return prefix + name + suffix;
     }
 
     private IntPtr CreateCurrentIcon()
@@ -298,9 +333,10 @@ internal sealed class TrayIconService : IDisposable
             GetSystemMetricsForDpi(SmallIconHeightMetric, dpi)));
     }
 
-    private IntPtr RenderGroupIcon(int volumePercent)
+    private IntPtr RenderGroupIcon(int volumePercent) => RenderGroupIconAtSize(volumePercent, GetTrayIconSize());
+
+    private IntPtr RenderGroupIconAtSize(int volumePercent, int size)
     {
-        var size = GetTrayIconSize();
         var width = size;
         var height = size;
         var bitmapStatus = GdipCreateBitmapFromScan0(width, height, 0, PixelFormat32BppArgb, IntPtr.Zero, out var bitmap);
@@ -331,7 +367,7 @@ internal sealed class TrayIconService : IDisposable
             CheckGdiPlus(GdipCreateSolidFill(TrayIconAppearance.TextArgb(_appearance, _systemUsesLightTheme), out brush));
 
             var percentText = Math.Clamp(volumePercent, 0, 100).ToString();
-            // Fit against the original area so spacing cannot shrink the font.
+            // Choose the largest font whose visible glyph bounds fit the original area.
             var originalNumberHeight = height - bottomMargin -
                 Math.Max(2, (int)MathF.Round(height * 2f / 16f)) - separation;
             using var number = FitIconLine(percentText, fontFamily, GdipFontStyleRegular,
@@ -345,9 +381,19 @@ internal sealed class TrayIconService : IDisposable
             pillTop = Math.Min(height - pillHeight, Math.Max(pillTop, number.Height + requiredGap));
             numberY = Math.Max(0, Math.Min(numberY, pillTop - requiredGap - number.Height));
             PaintTrayAccent(bitmap, width, height, pillTop, pillHeight, _selectedAccentColor);
-            CheckGdiPlus(GdipDrawImageRectRectI(graphics, number.Bitmap,
-                (width - number.Width) / 2, numberY, number.Width, number.Height,
-                number.Left, number.Top, number.Width, number.Height,
+            using var mute = _selectedGroupMuted ? RasterizeMuteGlyph(stringFormat, brush, size) : null;
+            var glyph = mute ?? number;
+            if (mute is not null)
+            {
+                // Center fixed-size visible bounds in the number area, without fitting
+                // to the retained percentage. Keep clear of the unchanged accent pill.
+                numberY = Math.Max(0, Math.Min((originalNumberHeight - glyph.Height) / 2,
+                    pillTop - requiredGap - glyph.Height));
+            }
+            CheckGdiPlus(GdipDrawImageRectRectI(graphics, glyph.Bitmap,
+                (width - glyph.Width) / 2, numberY,
+                glyph.Width, glyph.Height,
+                glyph.Left, glyph.Top, glyph.Width, glyph.Height,
                 GdipUnitPixel, IntPtr.Zero, IntPtr.Zero, IntPtr.Zero));
             return CreateNativeIcon(bitmap, width, height);
         }
@@ -359,6 +405,20 @@ internal sealed class TrayIconService : IDisposable
             if (graphics != IntPtr.Zero) GdipDeleteGraphics(graphics);
             GdipDisposeImage(bitmap);
         }
+    }
+
+    private static GlyphRaster RasterizeMuteGlyph(IntPtr format, IntPtr brush, int iconSize)
+    {
+        // Fluent Icons on Windows 11; MDL2 supplies the same Mute glyph on Windows 10.
+        var status = GdipCreateFontFamilyFromName("Segoe Fluent Icons", IntPtr.Zero, out var family);
+        if (status != 0)
+            CheckGdiPlus(GdipCreateFontFamilyFromName("Segoe MDL2 Assets", IntPtr.Zero, out family));
+        try
+        {
+            var fontSize = Math.Max(1, (int)MathF.Round(MuteGlyphFontSizeAt96Dpi * iconSize / 16f));
+            return RasterizeGlyphs("\uE74F", family, fontSize, GdipFontStyleRegular, format, brush);
+        }
+        finally { GdipDeleteFontFamily(family); }
     }
 
     private static void PaintTrayAccent(IntPtr bitmap, int width, int height, int pillTop, int pillHeight, string accentColor)

@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <SelfContained>true</SelfContained>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="NAudio.Wasapi" Version="2.2.1" />
+    <Content Include="../../Disturn/Assets/Mute.wav" Link="Assets/Mute.wav" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="../../Disturn/Assets/Unmute.wav" Link="Assets/Unmute.wav" CopyToOutputDirectory="PreserveNewest" />
+    <Compile Include="../../Disturn/MuteFeedbackService.cs" Link="MuteFeedbackService.cs" />
+    <Compile Include="../../Disturn/SessionMuteState.cs" Link="SessionMuteState.cs" />
+    <Compile Include="../../Disturn/AudioSessionVolumeControl.cs" Link="AudioSessionVolumeControl.cs" />
+    <Compile Include="../../Disturn/AudioSessionService.cs" Link="AudioSessionService.cs" />
+    <Compile Include="../../Disturn/ApplicationEntry.cs" Link="ApplicationEntry.cs" />
+    <Compile Include="../../Disturn/GroupHotkeyObserver.cs" Link="GroupHotkeyObserver.cs" />
+  </ItemGroup>
+</Project>

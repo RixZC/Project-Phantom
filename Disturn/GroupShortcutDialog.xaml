@@ -20,6 +20,10 @@
                 AutomationProperties.Name="Shortcut recorder">
             <TextBlock x:Name="RecorderText" Text="Click to record" TextWrapping="Wrap" />
         </Button>
+        <Button x:Name="ResetDefaultShortcutButton" Content="Reset to media mute"
+                HorizontalAlignment="Left" Visibility="Collapsed"
+                Click="ResetDefaultShortcutButton_Click"
+                ToolTipService.ToolTip="Restore the media mute key, then choose Save" />
         <TextBlock Text="Click the field, then press modifiers and the shortcut key. Release and press again any modifier held before recording. Esc cancels recording; Save applies the shortcut globally."
                    TextWrapping="Wrap" Opacity="0.7" />
         <TextBlock Text="Num Lock and Shift can change the virtual key reported for numpad keys. Shortcuts are saved across restarts."

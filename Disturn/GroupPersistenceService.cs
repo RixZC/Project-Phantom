@@ -10,7 +10,7 @@ namespace Disturn;
 
 internal static class GroupPersistenceService
 {
-    private const int CurrentSchemaVersion = 6;
+    private const int CurrentSchemaVersion = 7;
     private const string FileName = "groups.json";
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
@@ -80,9 +80,10 @@ internal static class GroupPersistenceService
             var settings = document.Settings ?? new SavedApplicationSettings();
             ReadShortcut(settings.VolumeUpShortcut);
             ReadShortcut(settings.VolumeDownShortcut);
+            ReadShortcut(settings.MuteShortcut);
             var groups = new List<SavedGroupData>();
             var groupIds = new HashSet<Guid>();
-            var needsSave = false;
+            var needsSave = document.SchemaVersion < CurrentSchemaVersion;
             foreach (var group in document.Groups)
             {
                 if (group is null || string.IsNullOrWhiteSpace(group.Name) || group.Applications is null)
@@ -95,6 +96,7 @@ internal static class GroupPersistenceService
                     Id = group.Id ?? Guid.NewGuid(),
                     Name = group.Name.Trim(),
                     VolumePercent = Math.Clamp(group.VolumePercent, 0, 100),
+                    IsMuted = group.IsMuted,
                     TrayBackgroundColor = GroupTrayColors.Normalize(group.TrayBackgroundColor, GroupTrayColors.DefaultBackground),
                     TrayTextColor = GroupTrayColors.Normalize(group.TrayTextColor, GroupTrayColors.DefaultText),
                     UseAutomaticTrayTextColor = group.UseAutomaticTrayTextColor,
@@ -306,6 +308,13 @@ internal sealed class SavedGroupsDocument
 
 internal sealed class SavedApplicationSettings
 {
+    private string _appAppearance = "Automatic";
+    public string AppAppearance
+    {
+        get => _appAppearance;
+        set => _appAppearance = value is "Light" or "Dark" ? value : "Automatic";
+    }
+
     private string _trayIconAppearance = Disturn.TrayIconAppearance.Automatic;
     // Additive global setting: old saves default to Automatic; group fields stay intact.
     public string TrayIconAppearance
@@ -337,6 +346,16 @@ internal sealed class SavedApplicationSettings
     public JsonElement VolumeUpShortcut { get; set; }
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
     public JsonElement VolumeDownShortcut { get; set; }
+    // Missing: first-use media mute default; JSON null: explicitly cleared.
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+    public JsonElement MuteShortcut { get; set; }
+    public bool MuteFeedbackSounds { get; set; } = true;
+    private int _feedbackVolumePercent = 35;
+    public int FeedbackVolumePercent
+    {
+        get => _feedbackVolumePercent;
+        set => _feedbackVolumePercent = Math.Clamp(value, 0, 100);
+    }
 }
 
 internal sealed class SavedGroupData
@@ -344,6 +363,7 @@ internal sealed class SavedGroupData
     public Guid? Id { get; set; }
     public string Name { get; set; } = "";
     public int VolumePercent { get; set; } = 100;
+    public bool IsMuted { get; set; }
     public string TrayBackgroundColor { get; set; } = GroupTrayColors.DefaultBackground;
     public string TrayTextColor { get; set; } = GroupTrayColors.DefaultText;
     public bool UseAutomaticTrayTextColor { get; set; } = true;

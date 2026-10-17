@@ -14,6 +14,7 @@ public sealed partial class GroupShortcutDialog : ContentDialog
     private readonly Func<string?> _suspend;
     private readonly Func<string?> _resume;
     private readonly bool _observeOnly;
+    private readonly GroupShortcut? _defaultShortcut;
     private GroupShortcut? _candidate;
     private GroupShortcut? _beforeRecording;
     private bool _recording;
@@ -26,10 +27,12 @@ public sealed partial class GroupShortcutDialog : ContentDialog
     public Action<string>? ReportRawInputWarning { get; set; }
 
     public GroupShortcutDialog(GroupShortcut? shortcut, Func<GroupShortcut?, bool, string?> tryAssign,
-        Func<string?> suspend, Func<string?> resume, Func<GroupShortcut, string?> findOwner, string? initialError, bool observeOnly = false)
+        Func<string?> suspend, Func<string?> resume, Func<GroupShortcut, string?> findOwner, string? initialError, bool observeOnly = false, GroupShortcut? defaultShortcut = null)
     {
         InitializeComponent();
         _observeOnly = observeOnly;
+        _defaultShortcut = defaultShortcut;
+        ResetDefaultShortcutButton.Visibility = defaultShortcut is null ? Visibility.Collapsed : Visibility.Visible;
         _tryAssign = tryAssign;
         _suspend = suspend;
         _resume = resume;
@@ -252,6 +255,14 @@ public sealed partial class GroupShortcutDialog : ContentDialog
             return;
         }
         Apply(_candidate, args);
+    }
+
+    private void ResetDefaultShortcutButton_Click(object sender, RoutedEventArgs e)
+    {
+        StopRecording(cancel: true);
+        _candidate = _defaultShortcut;
+        CancelReassignment();
+        ShowError(null);
     }
 
     private void ClearButton_Click(ContentDialog sender, ContentDialogButtonClickEventArgs args)

@@ -28,6 +28,7 @@ namespace Disturn
         private readonly ObservableCollection<GroupItem> _groups = new();
         private bool _groupSavingAllowed = true;
         private GroupVolumeController? _volumeController;
+        private readonly MuteFeedbackService _muteFeedback = new();
         private Microsoft.UI.Dispatching.DispatcherQueueTimer? _saveDebounceTimer;
         private AppWindow? _appWindow;
         private TrayIconService? _trayIconService;
@@ -150,10 +151,11 @@ namespace Disturn
 
             var loadResult = GroupPersistenceService.Load();
             _settings = loadResult.Settings;
+            ApplyAppAppearance();
             _groupSavingAllowed = loadResult.CanSave;
             foreach (var savedGroup in loadResult.Groups)
             {
-                var group = CreateGroup(savedGroup.Name, savedGroup.VolumePercent, savedGroup.Id);
+                var group = CreateGroup(savedGroup.Name, savedGroup.VolumePercent, savedGroup.Id, savedGroup.IsMuted);
                 group.TrayBackgroundColor = savedGroup.TrayBackgroundColor;
                 group.TrayTextColor = savedGroup.TrayTextColor;
                 group.UseAutomaticTrayTextColor = savedGroup.UseAutomaticTrayTextColor;
@@ -189,7 +191,8 @@ namespace Disturn
                 ? Visibility.Visible
                 : Visibility.Collapsed;
             ShowPersistenceWarning(loadResult.Warning);
-            _hotkeyService = new GlobalHotkeyService(windowHandle, SelectGroup, ShowHotkeyWarning, AdjustVolume);
+            _hotkeyService = new GlobalHotkeyService(windowHandle, SelectGroup, ShowHotkeyWarning, AdjustVolume, ToggleSelectedGroupMute);
+            _hotkeyService.SetSelectedGroupAvailable(_selectedGroup is not null);
             _hotkeyService.StatusChanged += UpdateVolumeShortcutLabels;
             var shortcutWarnings = new List<string>();
             foreach (var group in _groups)
@@ -203,9 +206,27 @@ namespace Disturn
                 if (!_hotkeyService.RestoreVolumeCommand(command, GroupPersistenceService.ReadShortcut(saved), out var error))
                     shortcutWarnings.Add($"Volume {command}: {error}");
             }
+            var muteShortcut = _settings.MuteShortcut.ValueKind == System.Text.Json.JsonValueKind.Undefined
+                ? new GroupShortcut(0xAD) : GroupPersistenceService.ReadShortcut(_settings.MuteShortcut);
+            if (!_hotkeyService.RestoreVolumeCommand(VolumeCommand.Mute, muteShortcut, out var muteError))
+                shortcutWarnings.Add($"Mute/Unmute: {muteError}");
             UpdateVolumeShortcutLabels();
+            MuteFeedbackToggle.IsOn = _settings.MuteFeedbackSounds;
+            _muteFeedback.SetEnabled(_settings.MuteFeedbackSounds);
+            FeedbackVolumeSlider.Value = _settings.FeedbackVolumePercent;
+            FeedbackVolumeText.Text = $"{_settings.FeedbackVolumePercent}%";
+            FeedbackVolumeSlider.ValueChanged += FeedbackVolumeSlider_ValueChanged;
+            MuteFeedbackToggle.Toggled += (_, _) =>
+            {
+                _settings.MuteFeedbackSounds = MuteFeedbackToggle.IsOn;
+                _muteFeedback.SetEnabled(_settings.MuteFeedbackSounds);
+                SaveGroups();
+            };
             ShowHotkeyWarning(shortcutWarnings.Count == 0 ? null : string.Join(" ", shortcutWarnings));
             // Load before subscribing so initialization cannot save over existing settings.
+            AppAppearanceComboBox.SelectedItem = AppAppearanceComboBox.Items.OfType<ComboBoxItem>()
+                .First(item => (string)item.Tag == _settings.AppAppearance);
+            AppAppearanceComboBox.SelectionChanged += AppAppearanceComboBox_SelectionChanged;
             TrayAppearanceComboBox.SelectedItem = TrayAppearanceComboBox.Items.OfType<ComboBoxItem>()
                 .First(item => (string)item.Tag == _settings.TrayIconAppearance);
             _trayIconService?.SetAppearance(_settings.TrayIconAppearance);
@@ -313,6 +334,7 @@ namespace Disturn
             dialog.ExistingGroupNames = _groups.Select(group => group.Name).ToArray();
 
             dialog.XamlRoot = Content.XamlRoot;
+            dialog.RequestedTheme = WindowLayout.ActualTheme;
 
             if (await dialog.ShowAsync() == ContentDialogResult.Primary)
             {
@@ -386,6 +408,7 @@ namespace Disturn
             var dialog = new AddApplicationDialog
             {
                 XamlRoot = Content.XamlRoot,
+                RequestedTheme = WindowLayout.ActualTheme,
                 ExistingApplications = _groups.SelectMany(item => item.Applications).ToArray()
             };
 
@@ -415,6 +438,7 @@ namespace Disturn
                 Id = group.Id,
                 Name = group.Name,
                 VolumePercent = group.VolumePercent,
+                IsMuted = group.IsMuted,
                 TrayBackgroundColor = group.TrayBackgroundColor,
                 TrayTextColor = group.TrayTextColor,
                 UseAutomaticTrayTextColor = group.UseAutomaticTrayTextColor,
@@ -434,14 +458,16 @@ namespace Disturn
                     _hotkeyService.GetVolumeShortcut(VolumeCommand.Up), true);
                 _settings.VolumeDownShortcut = GroupPersistenceService.WriteShortcut(
                     _hotkeyService.GetVolumeShortcut(VolumeCommand.Down), true);
+                _settings.MuteShortcut = GroupPersistenceService.WriteShortcut(
+                    _hotkeyService.GetVolumeShortcut(VolumeCommand.Mute), true);
             }
             var saveResult = GroupPersistenceService.Save(savedGroups, _settings);
             ShowPersistenceWarning(saveResult.Warning);
         }
 
-        private GroupItem CreateGroup(string name, int volumePercent = 100, Guid? id = null)
+        private GroupItem CreateGroup(string name, int volumePercent = 100, Guid? id = null, bool isMuted = false)
         {
-            var group = new GroupItem(name, volumePercent, id);
+            var group = new GroupItem(name, volumePercent, id, isMuted);
             group.PropertyChanged += Group_PropertyChanged;
             return group;
         }
@@ -458,14 +484,23 @@ namespace Disturn
                 _volumeController?.ApplyGroup(group);
                 if (ReferenceEquals(_selectedGroup, group))
                 {
-                    _trayIconService?.UpdateSelectedGroup(group.Name, group.VolumePercent, group.AccentColor);
+                    _trayIconService?.UpdateSelectedGroup(group.Name, group.VolumePercent, group.AccentColor, group.IsMuted);
                 }
+            }
+            else if (e.PropertyName == nameof(GroupItem.IsMuted))
+            {
+                var success = _volumeController?.ApplyMuteGroup(group) == true;
+                if (ReferenceEquals(_selectedGroup, group))
+                    _trayIconService?.SetSelectedGroupMuted(group.IsMuted);
+                if (success && _settings.MuteFeedbackSounds) _muteFeedback.Play(group.IsMuted, _settings.FeedbackVolumePercent);
+                else if (!success && _volumeController is not null)
+                    ShowHotkeyWarning("Some audio sessions are unavailable. The group mute setting was retained; session discovery will retry.");
             }
             else if (e.PropertyName == nameof(GroupItem.AccentColor))
             {
                 if (ReferenceEquals(_selectedGroup, group))
                 {
-                    _trayIconService?.UpdateSelectedGroup(group.Name, group.VolumePercent, group.AccentColor);
+                    _trayIconService?.UpdateSelectedGroup(group.Name, group.VolumePercent, group.AccentColor, group.IsMuted);
                 }
             }
             else if (e.PropertyName != nameof(GroupItem.TrayBackgroundColor) &&
@@ -614,6 +649,7 @@ namespace Disturn
             SaveGroups();
             _volumeController?.Dispose();
             _volumeController = null;
+            _muteFeedback.Dispose();
         }
 
         private void AppWindow_Closing(AppWindow sender, AppWindowClosingEventArgs args)
@@ -626,6 +662,19 @@ namespace Disturn
 
             args.Cancel = true;
             sender.Hide();
+        }
+
+        private void FeedbackVolumeSlider_ValueChanged(object sender, RangeBaseValueChangedEventArgs e)
+        {
+            _settings.FeedbackVolumePercent = (int)Math.Round(e.NewValue);
+            FeedbackVolumeText.Text = $"{_settings.FeedbackVolumePercent}%";
+            SaveGroups();
+        }
+
+        private void MuteGroupButton_Click(object sender, RoutedEventArgs e)
+        {
+            if (sender is Button button && button.DataContext is GroupItem group)
+                group.IsMuted = !group.IsMuted;
         }
 
         private void SelectGroupButton_Click(object sender, RoutedEventArgs e)
@@ -663,6 +712,7 @@ namespace Disturn
                 OwnerWindowHandle = WinRT.Interop.WindowNative.GetWindowHandle(this),
                 ReportRawInputWarning = ShowHotkeyWarning,
                 XamlRoot = Content.XamlRoot,
+                RequestedTheme = WindowLayout.ActualTheme,
                 Title = $"Shortcut for {group.Name}"
             };
             await dialog.ShowAsync();
@@ -672,12 +722,16 @@ namespace Disturn
         {
             VolumeUpShortcutText.Text = _hotkeyService?.GetVolumeLabel(VolumeCommand.Up) ?? "Not assigned";
             VolumeDownShortcutText.Text = _hotkeyService?.GetVolumeLabel(VolumeCommand.Down) ?? "Not assigned";
+            MuteShortcutText.Text = _hotkeyService?.GetVolumeLabel(VolumeCommand.Mute) ?? "Not assigned";
         }
 
         private async void VolumeShortcutButton_Click(object sender, RoutedEventArgs e)
         {
             if (sender is not Button button || _hotkeyService is null) return;
-            var command = button.Tag as string == "Up" ? VolumeCommand.Up : VolumeCommand.Down;
+            var command = (button.Tag as string) switch
+            {
+                "Up" => VolumeCommand.Up, "Down" => VolumeCommand.Down, _ => VolumeCommand.Mute
+            };
             var dialog = new GroupShortcutDialog(_hotkeyService.GetVolumeShortcut(command), (shortcut, allowReassign) =>
             {
                 if (_hotkeyService is null) return "Global shortcuts are unavailable.";
@@ -698,12 +752,14 @@ namespace Disturn
                 _hotkeyService.TryResumeAfterRecording(out var error);
                 ShowHotkeyWarning(error);
                 return error;
-            }, shortcut => _hotkeyService?.FindConflictName(null, command, shortcut), _hotkeyService.GetVolumeError(command))
+            }, shortcut => _hotkeyService?.FindConflictName(null, command, shortcut), _hotkeyService.GetVolumeError(command),
+                defaultShortcut: command == VolumeCommand.Mute ? new GroupShortcut(0xAD) : null)
             {
                 OwnerWindowHandle = WinRT.Interop.WindowNative.GetWindowHandle(this),
                 ReportRawInputWarning = ShowHotkeyWarning,
                 XamlRoot = Content.XamlRoot,
-                Title = $"Volume {command} shortcut"
+                RequestedTheme = WindowLayout.ActualTheme,
+                Title = command == VolumeCommand.Mute ? "Mute/Unmute Selected Group" : $"Volume {command} shortcut"
             };
             await dialog.ShowAsync();
         }
@@ -735,9 +791,17 @@ namespace Disturn
             if (_selectedGroup is not null) _selectedGroup.IsSelected = false;
             _selectedGroup = group;
             if (_selectedGroup is not null) _selectedGroup.IsSelected = true;
+            _hotkeyService?.SetSelectedGroupAvailable(_selectedGroup is not null);
 
             _trayIconService?.UpdateSelectedGroup(_selectedGroup?.Name, _selectedGroup?.VolumePercent ?? 100,
-                _selectedGroup?.AccentColor);
+                _selectedGroup?.AccentColor, _selectedGroup?.IsMuted ?? false);
+            RestartAutomaticReturn();
+        }
+
+        private void ToggleSelectedGroupMute()
+        {
+            if (_selectedGroup is null || !_groups.Contains(_selectedGroup)) return;
+            _selectedGroup.IsMuted = !_selectedGroup.IsMuted;
             RestartAutomaticReturn();
         }
 
@@ -824,6 +888,25 @@ namespace Disturn
                 !int.TryParse(item.Tag as string, out var seconds)) return;
             _settings.ReturnDelaySeconds = seconds;
             RestartAutomaticReturn();
+            SaveGroups();
+        }
+
+        private void ApplyAppAppearance()
+        {
+            WindowLayout.RequestedTheme = _settings.AppAppearance switch
+            {
+                "Light" => ElementTheme.Light,
+                "Dark" => ElementTheme.Dark,
+                _ => ElementTheme.Default
+            };
+            UpdateTitleBarColors();
+        }
+
+        private void AppAppearanceComboBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        {
+            if (AppAppearanceComboBox.SelectedItem is not ComboBoxItem item) return;
+            _settings.AppAppearance = item.Tag as string ?? "Automatic";
+            ApplyAppAppearance();
             SaveGroups();
         }
 
@@ -953,6 +1036,7 @@ namespace Disturn
         public ObservableCollection<ApplicationEntry> Applications { get; } = new();
         private int _volumePercent = 100;
         private bool _isSelected;
+        private bool _isMuted;
         private string _trayBackgroundColor = GroupTrayColors.DefaultBackground;
         private string _trayTextColor = GroupTrayColors.DefaultText;
         private bool _useAutomaticTrayTextColor = true;
@@ -978,6 +1062,25 @@ namespace Disturn
         }
 
         public string VolumeLabel => $"{VolumePercent}%";
+
+        public bool IsMuted
+        {
+            get => _isMuted;
+            set
+            {
+                if (_isMuted == value) return;
+                _isMuted = value;
+                PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(IsMuted)));
+                PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(MuteLabel)));
+                PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(MuteToolTip)));
+                PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(MuteGlyph)));
+                PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(MuteAccessibleName)));
+            }
+        }
+        public string MuteLabel => IsMuted ? "Unmute" : "Mute";
+        public string MuteToolTip => IsMuted ? "Unmute group" : "Mute group";
+        public string MuteAccessibleName => $"{MuteToolTip} {Name}";
+        public string MuteGlyph => IsMuted ? "\uE74F" : "\uE767";
 
         public GroupShortcut? Shortcut
         {
@@ -1069,16 +1172,23 @@ namespace Disturn
                 _isSelected = value;
                 PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(IsSelected)));
                 PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(SelectionLabel)));
+                PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(SelectionIndicatorOpacity)));
+                PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(SelectionToolTip)));
+                PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(SelectionAccessibleName)));
             }
         }
 
         public string SelectionLabel => IsSelected ? "Selected" : "Select";
+        public double SelectionIndicatorOpacity => IsSelected ? 1 : 0;
+        public string SelectionToolTip => IsSelected ? "This group is selected" : "Select this group for volume commands";
+        public string SelectionAccessibleName => IsSelected ? $"{Name}, selected" : $"Select group {Name}";
 
-        public GroupItem(string name, int volumePercent = 100, Guid? id = null)
+        public GroupItem(string name, int volumePercent = 100, Guid? id = null, bool isMuted = false)
         {
             Id = id ?? Guid.NewGuid();
             Name = name;
             _volumePercent = Math.Clamp(volumePercent, 0, 100);
+            _isMuted = isMuted;
         }
     }
 }

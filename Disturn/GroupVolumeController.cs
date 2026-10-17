@@ -37,6 +37,18 @@ internal sealed class GroupVolumeController : IDisposable
         }
     }
 
+    public bool ApplyMuteGroup(GroupItem group)
+    {
+        var success = true;
+        foreach (var pair in _sessions.Where(pair => ReferenceEquals(pair.Value.Group, group)).ToArray())
+        {
+            if (pair.Value.Control.TryApplyGroupMute(group.IsMuted)) continue;
+            Release(pair.Key, pair.Value);
+            success = false;
+        }
+        return success;
+    }
+
     public void Reconcile()
     {
         if (_disposed)
@@ -71,6 +83,10 @@ internal sealed class GroupVolumeController : IDisposable
                     Release(session.SessionKey, existing);
                     OpenAndTrack(session, group);
                 }
+                else if (!existing.Control.TryApplyGroupMute(group.IsMuted))
+                {
+                    Release(session.SessionKey, existing);
+                }
                 continue;
             }
 
@@ -85,6 +101,11 @@ internal sealed class GroupVolumeController : IDisposable
 
     private GroupItem? FindGroup(ApplicationEntry session)
     {
+        // Feedback belongs to Disturn itself, even if someone assigns Disturn to a group.
+        if (session.ProcessId == Environment.ProcessId ||
+            (!string.IsNullOrEmpty(Environment.ProcessPath) &&
+             string.Equals(session.ExecutablePath, Environment.ProcessPath, StringComparison.OrdinalIgnoreCase)))
+            return null;
         foreach (var group in _groups)
         {
             if (group.Applications.Any(application => application.IsSameApplication(session)))
@@ -107,6 +128,8 @@ internal sealed class GroupVolumeController : IDisposable
         var tracked = new TrackedSession(group, control);
         _sessions[entry.SessionKey] = tracked;
         ApplyTarget(entry.SessionKey, tracked, group);
+        if (_sessions.ContainsKey(entry.SessionKey) && !control.TryApplyGroupMute(group.IsMuted))
+            Release(entry.SessionKey, tracked);
     }
 
     private void ApplyTarget(string key, TrackedSession tracked, GroupItem group)
