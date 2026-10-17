@@ -4,6 +4,7 @@ using System.ComponentModel;
 using System.Diagnostics;
 using System.Linq;
 using System.Runtime.InteropServices;
+using Microsoft.UI.Dispatching;
 
 namespace Disturn;
 
@@ -14,7 +15,6 @@ internal sealed class GlobalHotkeyService : IDisposable
 {
     private const uint WmHotkey = 0x0312;
     private const uint WmNcDestroy = 0x0082;
-    private const uint ModNoRepeat = 0x4000;
     private static readonly UIntPtr SubclassId = new(2);
     private readonly IntPtr _windowHandle;
     private readonly uint _owningThread;
@@ -22,6 +22,10 @@ internal sealed class GlobalHotkeyService : IDisposable
     private readonly Action<int> _adjustVolume;
     private readonly Action<string?> _reportWarning;
     private readonly SubclassProcedure _callback;
+    private readonly DispatcherQueue _dispatcher;
+    private readonly GroupHotkeyObserver _groupObserver;
+    private readonly Dictionary<int, GroupShortcut> _observedShortcuts = new();
+    private int _observerVersion;
     private readonly HashSet<int> _registeredIds = new();
     private readonly Dictionary<int, Registration> _registrations = new();
     private readonly HashSet<GroupItem> _knownGroups = new();
@@ -47,6 +51,10 @@ internal sealed class GlobalHotkeyService : IDisposable
         _adjustVolume = adjustVolume;
         _reportWarning = reportWarning;
         _callback = WindowProcedure;
+        _dispatcher = DispatcherQueue.GetForCurrentThread()
+            ?? throw new InvalidOperationException("Global shortcuts require a UI dispatcher.");
+        _groupObserver = new GroupHotkeyObserver(QueueGroupSelection, warning =>
+            _dispatcher.TryEnqueue(() => ReportObserverFailure(warning)));
         if (windowHandle == IntPtr.Zero || GetWindowThreadProcessId(windowHandle, out _) != _owningThread)
         {
             _initializationWarning = "Global shortcuts could not attach to the window's owning UI thread.";
@@ -183,10 +191,10 @@ internal sealed class GlobalHotkeyService : IDisposable
                 error = "This session has exhausted shortcut registration IDs. Restart Disturn.";
                 return false;
             }
-            // Transfers must re-register: groups use MOD_NOREPEAT, volume commands do not.
+            // Transfers may cross between pass-through group observation and native volume hotkeys.
             if (incomingWasActive)
             {
-                if (!UnregisterHotKey(_windowHandle, incoming!.Id))
+                if (!ReleaseShortcut(incoming!.Id))
                 {
                     error = ErrorMessage("Could not release the shortcut for reassignment", Marshal.GetLastWin32Error());
                     return false;
@@ -194,10 +202,11 @@ internal sealed class GlobalHotkeyService : IDisposable
                 _registeredIds.Remove(incoming!.Id);
             }
             newId = _nextId++;
-            var flags = shortcut.Modifiers | (group is not null ? ModNoRepeat : 0);
-            if (!RegisterHotKey(_windowHandle, newId, flags, shortcut.VirtualKey))
+            if (!ActivateShortcut(newId, group, shortcut))
             {
-                error = ErrorMessage($"Could not register {shortcut.Label}; another app or Windows may already use it",
+                error = ErrorMessage(group is null
+                    ? $"Could not register {shortcut.Label}; another app or Windows may already use it"
+                    : $"Could not observe {shortcut.Label}",
                     Marshal.GetLastWin32Error());
                 RestoreIncoming(incoming, incomingWasActive, ref error);
                 return false;
@@ -205,12 +214,12 @@ internal sealed class GlobalHotkeyService : IDisposable
             _registeredIds.Add(newId);
         }
         if (previous is not null && _registeredIds.Contains(previous.Id) &&
-            !UnregisterHotKey(_windowHandle, previous.Id))
+            !ReleaseShortcut(previous.Id))
         {
             error = ErrorMessage("Could not release the previous shortcut; assignments were preserved", Marshal.GetLastWin32Error());
             if (newId != 0)
             {
-                if (UnregisterHotKey(_windowHandle, newId)) _registeredIds.Remove(newId);
+                if (ReleaseShortcut(newId)) _registeredIds.Remove(newId);
                 else error += " Replacement cleanup failed; it is inactive in Disturn and will be retried on Exit.";
             }
             RestoreIncoming(incoming, incomingWasActive, ref error);
@@ -231,7 +240,7 @@ internal sealed class GlobalHotkeyService : IDisposable
     private void RestoreIncoming(Registration? incoming, bool wasActive, ref string? error)
     {
         if (!wasActive || incoming is null) return;
-        if (RegisterHotKey(_windowHandle, incoming.Id, incoming.NativeModifiers, incoming.Shortcut.VirtualKey))
+        if (ActivateShortcut(incoming.Id, incoming.Group, incoming.Shortcut))
             _registeredIds.Add(incoming.Id);
         else
         {
@@ -258,9 +267,67 @@ internal sealed class GlobalHotkeyService : IDisposable
         }
         StatusChanged?.Invoke();
     }
-    private sealed record Registration(int Id, GroupItem? Group, GroupShortcut Shortcut, VolumeCommand? Command = null)
+    private sealed record Registration(int Id, GroupItem? Group, GroupShortcut Shortcut, VolumeCommand? Command = null);
+
+    private bool ActivateShortcut(int id, GroupItem? group, GroupShortcut shortcut)
     {
-        public uint NativeModifiers => Shortcut.Modifiers | (Group is not null ? ModNoRepeat : 0);
+        if (group is null)
+            return RegisterHotKey(_windowHandle, id, shortcut.Modifiers, shortcut.VirtualKey);
+        if (!_groupObserver.TryStart(out var error))
+        {
+            Marshal.SetLastPInvokeError(error);
+            return false;
+        }
+        _observedShortcuts[id] = shortcut;
+        PublishObservedShortcuts();
+        return true;
+    }
+
+    private bool ReleaseShortcut(int id)
+    {
+        if (!_observedShortcuts.Remove(id)) return UnregisterHotKey(_windowHandle, id);
+        PublishObservedShortcuts();
+        return true;
+    }
+
+    private void PublishObservedShortcuts()
+    {
+        // Every change invalidates queued commands from the previous snapshot.
+        _groupObserver.Update(_observedShortcuts.Select(pair =>
+            new GroupHotkeyObserver.Binding(pair.Key, pair.Value.VirtualKey, pair.Value.Modifiers)).ToArray(),
+            ++_observerVersion);
+    }
+
+    private void ReportObserverFailure(string warning)
+    {
+        if (_disposed) return;
+        foreach (var id in _observedShortcuts.Keys)
+        {
+            _registeredIds.Remove(id);
+            if (_registrations.TryGetValue(id, out var registration))
+                registration.Group?.SetShortcutStatus(false, warning);
+        }
+        _observedShortcuts.Clear();
+        PublishObservedShortcuts();
+        _reportWarning(warning);
+        StatusChanged?.Invoke();
+    }
+
+    private void QueueGroupSelection(int id, int version)
+    {
+        // Hook thread: no model access, selection, persistence, or audio work here.
+        _dispatcher.TryEnqueue(() =>
+        {
+            if (_disposed || _suspendedForRecording || version != _observerVersion ||
+                !_registeredIds.Contains(id) || !_registrations.TryGetValue(id, out var registration) ||
+                registration.Group is null) return;
+            try { _selectGroup(registration.Group); }
+            catch (Exception)
+            {
+                // Never log the triggering key or its configured combination.
+                _reportWarning("The group shortcut command could not be completed.");
+            }
+        });
     }
 
     public bool TrySuspendForRecording(out string? error)
@@ -277,7 +344,7 @@ internal sealed class GlobalHotkeyService : IDisposable
         foreach (var registration in _registrations.Values)
         {
             if (!_registeredIds.Contains(registration.Id)) continue;
-            if (!UnregisterHotKey(_windowHandle, registration.Id))
+            if (!ReleaseShortcut(registration.Id))
             {
                 error = ErrorMessage("Could not pause shortcuts for recording", Marshal.GetLastWin32Error());
                 TryResumeAfterRecording(out var restoreError);
@@ -300,8 +367,7 @@ internal sealed class GlobalHotkeyService : IDisposable
         foreach (var registration in _registrations.Values)
         {
             if (_registeredIds.Contains(registration.Id)) continue;
-            if (RegisterHotKey(_windowHandle, registration.Id, registration.NativeModifiers,
-                registration.Shortcut.VirtualKey))
+            if (ActivateShortcut(registration.Id, registration.Group, registration.Shortcut))
             {
                 _registeredIds.Add(registration.Id);
                 registration.Group?.SetShortcutStatus(true, null);
@@ -328,6 +394,8 @@ internal sealed class GlobalHotkeyService : IDisposable
         if (message == WmNcDestroy)
         {
             _disposed = true;
+            _groupObserver.Dispose();
+            _observedShortcuts.Clear();
             _registeredIds.Clear(); // Window-bound hotkeys end with this HWND.
             _registrations.Clear();
             _knownGroups.Clear();
@@ -344,8 +412,7 @@ internal sealed class GlobalHotkeyService : IDisposable
                 // delay, window activation, or audio-control call is needed.
                 try
                 {
-                    if (registration.Group is not null) _selectGroup(registration.Group);
-                    else if (registration.Command is VolumeCommand command)
+                    if (registration.Command is VolumeCommand command)
                         _adjustVolume(command == VolumeCommand.Up ? 1 : -1);
                 }
                 catch (Exception ex)
@@ -368,9 +435,11 @@ internal sealed class GlobalHotkeyService : IDisposable
         var warnings = new List<string>();
         foreach (var id in _registeredIds)
         {
-            if (!UnregisterHotKey(_windowHandle, id))
+            if (!ReleaseShortcut(id))
                 warnings.Add(ErrorMessage("Could not release a global shortcut", Marshal.GetLastWin32Error()));
         }
+        _groupObserver.Dispose();
+        _observedShortcuts.Clear();
         _registeredIds.Clear();
         _registrations.Clear();
         foreach (var group in _knownGroups) group.SetShortcutStatus(false, "Disturn is exiting.");

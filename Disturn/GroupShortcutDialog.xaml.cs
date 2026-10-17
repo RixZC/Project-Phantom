@@ -13,6 +13,7 @@ public sealed partial class GroupShortcutDialog : ContentDialog
     private readonly Func<GroupShortcut, string?> _findOwner;
     private readonly Func<string?> _suspend;
     private readonly Func<string?> _resume;
+    private readonly bool _observeOnly;
     private GroupShortcut? _candidate;
     private GroupShortcut? _beforeRecording;
     private bool _recording;
@@ -25,9 +26,10 @@ public sealed partial class GroupShortcutDialog : ContentDialog
     public Action<string>? ReportRawInputWarning { get; set; }
 
     public GroupShortcutDialog(GroupShortcut? shortcut, Func<GroupShortcut?, bool, string?> tryAssign,
-        Func<string?> suspend, Func<string?> resume, Func<GroupShortcut, string?> findOwner, string? initialError)
+        Func<string?> suspend, Func<string?> resume, Func<GroupShortcut, string?> findOwner, string? initialError, bool observeOnly = false)
     {
         InitializeComponent();
+        _observeOnly = observeOnly;
         _tryAssign = tryAssign;
         _suspend = suspend;
         _resume = resume;
@@ -290,7 +292,9 @@ public sealed partial class GroupShortcutDialog : ContentDialog
         TranslationInfoTextBlock.Text = _candidate?.TranslationWarning ?? "";
         TranslationInfoTextBlock.Visibility = string.IsNullOrWhiteSpace(TranslationInfoTextBlock.Text)
             ? Visibility.Collapsed : Visibility.Visible;
-        WarningTextBlock.Text = _candidate?.Warning ?? "";
+        WarningTextBlock.Text = _candidate is null ? "" : _observeOnly
+            ? "Group shortcuts are observed without blocking other apps. The foreground app may perform its own action too."
+            : _candidate.Warning ?? "";
         WarningTextBlock.Visibility = string.IsNullOrWhiteSpace(WarningTextBlock.Text) ? Visibility.Collapsed : Visibility.Visible;
     }
 

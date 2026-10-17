@@ -44,6 +44,7 @@
         <Grid Padding="24">
             <Grid.Resources>
                 <local:AccentColorBrushConverter x:Key="AccentColorBrushConverter" />
+                <local:GroupExpansionToolTipConverter x:Key="GroupExpansionToolTipConverter" />
             </Grid.Resources>
             <StackPanel Spacing="12">
                 <Grid ColumnSpacing="12">
@@ -54,7 +55,7 @@
                     <TextBlock x:Name="TitleText" Text="Sound Mixer" FontSize="28" FontWeight="SemiBold" />
                     <Button x:Name="OpenSettingsButton" Grid.Column="1" Width="40" Height="40" Padding="0"
                             VerticalAlignment="Center" Background="Transparent" BorderThickness="0"
-                            Click="OpenSettingsButton_Click" ToolTipService.ToolTip="Settings"
+                            Click="OpenSettingsButton_Click" ToolTipService.ToolTip="Customize Disturn preferences"
                             AutomationProperties.Name="Settings">
                         <FontIcon Glyph="&#xE713;" FontSize="20" />
                     </Button>
@@ -68,7 +69,8 @@
                     Content="+ Add Group"
                     HorizontalAlignment="Left"
                     Margin="0,16,0,8"
-                    Click="AddGroupButton_Click" />
+                    Click="AddGroupButton_Click"
+                    ToolTipService.ToolTip="Create a new audio group" />
 
                 <TextBlock
                     Text="Groups"
@@ -106,6 +108,7 @@
                         <DataTemplate>
                             <Grid Margin="0,0,0,4" HorizontalAlignment="Stretch">
                             <Expander
+                                x:Name="GroupCard"
                                 MinHeight="72"
                                 Padding="0"
                                 CornerRadius="4"
@@ -114,7 +117,8 @@
                                 HorizontalAlignment="Stretch"
                                 HorizontalContentAlignment="Stretch">
                                 <Expander.Header>
-                                    <Grid ColumnSpacing="12" Padding="4,4,0,4" MinHeight="72">
+                                    <Grid ColumnSpacing="12" Padding="4,4,0,4" MinHeight="72"
+                                          ToolTipService.ToolTip="{Binding IsExpanded, ElementName=GroupCard, Converter={StaticResource GroupExpansionToolTipConverter}}">
                                         <Grid.ColumnDefinitions>
                                             <ColumnDefinition Width="*" />
                                             <ColumnDefinition Width="Auto" />
@@ -150,6 +154,7 @@
                                                 Maximum="100"
                                                 StepFrequency="1"
                                                 Value="{Binding VolumePercent, Mode=TwoWay}"
+                                                ToolTipService.ToolTip="Adjust the volume of all apps in this group"
                                                 AutomationProperties.Name="Group volume" />
                                         <TextBlock Grid.Column="1"
                                                    Text="{Binding VolumeLabel}"
@@ -159,7 +164,7 @@
                                     <Button HorizontalAlignment="Left"
                                             Padding="8,4"
                                             Click="ShortcutButton_Click"
-                                            ToolTipService.ToolTip="Configure the global group-selection shortcut"
+                                            ToolTipService.ToolTip="Set a shortcut to select this group"
                                             AutomationProperties.Name="Group shortcut">
                                         <StackPanel Orientation="Horizontal" Spacing="8">
                                             <TextBlock Text="Shortcut" />
@@ -220,7 +225,6 @@
                                                         </StackPanel>
                                                         <Button
                                                             Grid.Column="1"
-                                                            Content="Ã—"
                                                             FontSize="18"
                                                             Width="32"
                                                             Height="32"
@@ -229,8 +233,10 @@
                                                             BorderBrush="Transparent"
                                                             BorderThickness="0"
                                                             Click="RemoveApplicationButton_Click"
-                                                            ToolTipService.ToolTip="Remove application from group"
-                                                            AutomationProperties.Name="Remove application from group" />
+                                                            ToolTipService.ToolTip="Remove this app from the group"
+                                                            AutomationProperties.Name="Remove application from group">
+                                                            <FontIcon Glyph="&#xE8BB;" FontSize="14" />
+                                                        </Button>
                                                     </Grid>
                                                 </Border>
                                             </DataTemplate>
@@ -245,13 +251,14 @@
                                             Grid.Column="0"
                                             Content="Add Application"
                                             HorizontalAlignment="Left"
-                                            Click="AddApplicationButton_Click" />
+                                            Click="AddApplicationButton_Click"
+                                            ToolTipService.ToolTip="Choose an app to add to this group" />
                                         <Button
                                             Grid.Column="1"
                                             Content="Delete Group"
                                             HorizontalAlignment="Right"
                                             Click="DeleteGroupButton_Click"
-                                            ToolTipService.ToolTip="Delete group"
+                                            ToolTipService.ToolTip="Delete this group"
                                             AutomationProperties.Name="Delete group" />
                                     </Grid>
                                 </StackPanel>
@@ -296,13 +303,15 @@
                     <StackPanel Spacing="12">
                         <TextBlock Text="Global shortcuts adjust the selected group. Without a selected group, they adjust Windows master volume."
                                    TextWrapping="Wrap" Opacity="0.7" />
-                        <Button Tag="Up" Click="VolumeShortcutButton_Click" HorizontalAlignment="Left">
+                        <Button Tag="Up" Click="VolumeShortcutButton_Click" HorizontalAlignment="Left"
+                                ToolTipService.ToolTip="Set a global shortcut for increasing volume">
                             <StackPanel Orientation="Horizontal" Spacing="12">
                                 <TextBlock Text="Volume Up" />
                                 <TextBlock x:Name="VolumeUpShortcutText" Text="Not assigned" />
                             </StackPanel>
                         </Button>
-                        <Button Tag="Down" Click="VolumeShortcutButton_Click" HorizontalAlignment="Left">
+                        <Button Tag="Down" Click="VolumeShortcutButton_Click" HorizontalAlignment="Left"
+                                ToolTipService.ToolTip="Set a global shortcut for decreasing volume">
                             <StackPanel Orientation="Horizontal" Spacing="12">
                                 <TextBlock Text="Volume Down" />
                                 <TextBlock x:Name="VolumeDownShortcutText" Text="Not assigned" />
@@ -316,6 +325,7 @@
                             </Grid.ColumnDefinitions>
                             <Slider x:Name="VolumeStepSlider" Minimum="1" Maximum="20"
                                     StepFrequency="1" Value="2"
+                                    ToolTipService.ToolTip="Choose percentage points per volume shortcut press"
                                     AutomationProperties.Name="Volume adjustment step in percentage points" />
                             <TextBlock x:Name="VolumeStepText" Grid.Column="1" Text="2%"
                                        VerticalAlignment="Center" HorizontalTextAlignment="Right" />
@@ -331,10 +341,13 @@
                         BorderThickness="1" CornerRadius="4" Padding="16">
                     <StackPanel Spacing="12">
                         <ComboBox x:Name="DefaultTargetComboBox" Header="Default volume target"
+                                  ToolTipService.ToolTip="Choose the startup and automatic return volume target"
                                   HorizontalAlignment="Stretch" />
                         <ToggleSwitch x:Name="AutomaticReturnToggle" Header="Automatically return to default"
+                                      ToolTipService.ToolTip="Return to the default target after volume inactivity"
                                       OnContent="Enabled" OffContent="Disabled" />
                         <ComboBox x:Name="ReturnDelayComboBox" Header="Return after"
+                                  ToolTipService.ToolTip="Set when to return to the default target"
                                   HorizontalAlignment="Left">
                             <ComboBoxItem Content="10 seconds" Tag="10" />
                             <ComboBoxItem Content="30 seconds" Tag="30" />
@@ -354,9 +367,11 @@
                     <StackPanel Spacing="12">
                         <ToggleSwitch x:Name="LaunchWithWindowsToggle"
                                       Header="Launch Disturn when Windows starts"
+                                      ToolTipService.ToolTip="Start Disturn when you sign in to Windows"
                                       OnContent="Enabled" OffContent="Disabled" IsEnabled="False" />
                         <ToggleSwitch x:Name="StartMinimizedToggle"
                                       Header="Start minimized to system tray"
+                                      ToolTipService.ToolTip="Hide the window only when Windows starts Disturn"
                                       OnContent="Enabled" OffContent="Disabled" IsEnabled="False" />
                         <TextBlock x:Name="StartupStatusText" TextWrapping="Wrap"
                                    Foreground="{ThemeResource SystemFillColorCautionBrush}"
@@ -374,6 +389,7 @@
                         <TextBlock Text="Choose the volume indicator's text color for your taskbar."
                                    TextWrapping="Wrap" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
                         <ComboBox x:Name="TrayAppearanceComboBox" MinWidth="220"
+                                  ToolTipService.ToolTip="Change tray text without changing the app theme"
                                   AutomationProperties.Name="Tray icon appearance">
                             <ComboBoxItem Content="Automatic (follow Windows)" Tag="Automatic" />
                             <ComboBoxItem Content="Light mode" Tag="Light" />
@@ -399,6 +415,7 @@
                                        TextWrapping="Wrap" VerticalAlignment="Center" />
                             <Button Grid.Column="1" Content="Open Settings" VerticalAlignment="Center"
                                     Click="OpenTaskbarSettingsButton_Click"
+                                    ToolTipService.ToolTip="Open Windows taskbar personalization"
                                     AutomationProperties.Name="Open Windows taskbar settings" />
                         </Grid>
                         <TextBlock Text="In Windows Settings, expand &quot;Other system tray icons&quot; and enable Disturn."

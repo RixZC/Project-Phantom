@@ -46,7 +46,8 @@
                 </StackPanel>
             </Button>
             <Button x:Name="ExitMenuButton" Style="{StaticResource TrayMenuItemStyle}" Click="ExitMenuButton_Click"
-                    AutomationProperties.Name="Exit Disturn">
+                    AutomationProperties.Name="Exit Disturn"
+                    ToolTipService.ToolTip="Quit Disturn and stop background volume control">
                 <StackPanel Orientation="Horizontal" Spacing="12">
                     <FontIcon Glyph="&#xE8BB;" FontFamily="Segoe Fluent Icons" FontSize="16" />
                     <TextBlock Text="Exit" VerticalAlignment="Center" />

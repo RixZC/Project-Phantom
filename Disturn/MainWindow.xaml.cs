@@ -654,7 +654,7 @@ namespace Disturn
                 _hotkeyService.TryResumeAfterRecording(out var error);
                 ShowHotkeyWarning(error);
                 return error;
-            }, shortcut => _hotkeyService?.FindConflictName(group, null, shortcut), group.ShortcutError)
+            }, shortcut => _hotkeyService?.FindConflictName(group, null, shortcut), group.ShortcutError, observeOnly: true)
             {
                 OwnerWindowHandle = WinRT.Interop.WindowNative.GetWindowHandle(this),
                 ReportRawInputWarning = ShowHotkeyWarning,
