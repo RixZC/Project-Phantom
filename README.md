@@ -1,22 +1,25 @@
-# Disturn v1.0.0
-
-The first public release of **Disturn**, a lightweight Windows utility for organizing and controlling application audio.
+# Disturn - Audio Mixer
 
 ### Features
 
 - **Audio groups:** Organize applications into groups and control their volume together.
 - **Global shortcuts:** Switch between groups using customizable keyboard shortcuts.
 - **Dynamic system tray icon:** See the selected group's volume percentage directly in the notification area.
-- **Adaptive appearance:** Automatically adjusts the tray indicator for Windows light and dark modes.
+- **Adaptive appearance:** Automatically adjusts the application window and tray indicator for Windows light and dark modes.
 - **Background operation:** Keep Disturn running in the system tray.
 - **Windows startup:** Optionally launch Disturn when signing in.
 - **Persistent settings:** Save groups, application assignments, and preferences between sessions.
 
 ### Installation
 
-1. Download `Disturn-1.0.0-Setup-x64.exe` from the Assets section below.
+1. Download the latest release.
 2. Run the installer and follow the setup instructions.
 3. Launch Disturn and create your first audio group.
+
+### Updating
+
+1. Download latest release
+2. Run the installer
 
 **Platform:** Windows x64
 
